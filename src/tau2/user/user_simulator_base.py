@@ -72,6 +72,10 @@ class UserState(BaseModel):
                         role="assistant",
                         tool_calls=message.tool_calls,
                         content=message.content,
+                        raw_data=message.raw_data,
+                        usage=message.usage,
+                        cost=message.cost,
+                        generation_time_seconds=message.generation_time_seconds,
                     )
                 )
             elif isinstance(message, AssistantMessage):

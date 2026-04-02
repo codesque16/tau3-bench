@@ -48,6 +48,20 @@ DEFAULT_FIRST_AGENT_MESSAGE = AssistantMessage(
     role="assistant", content="Hi! How can I help you today?", cost=0.0
 )
 
+
+def _assistant_solo_first_user_message(task: Task) -> UserMessage:
+    """First user turn for assistant-only one-shot runs: ticket + completion instructions."""
+    ticket = str(task.user_scenario)
+    content = (
+        f"{ticket}\n\n"
+        "Resolve this ticket completely using the tools as needed. When you are done, "
+        "send a single final message to the user summarizing what you did and answering "
+        "their needs"
+    )
+    msg = UserMessage.text(content=content)
+    msg.timestamp = get_now()
+    return msg
+
 # Type variables for generic orchestrators
 # Base types for BaseOrchestrator - unbound to allow both half-duplex and full-duplex
 BaseAgentT = TypeVar("BaseAgentT")
@@ -376,11 +390,16 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
             - ENV -> AGENT: Environment returns tool results to agent (after agent's tool call)
             - ENV -> USER: Environment returns tool results to user (after user's tool call)
 
-        Solo Mode:
+        Solo Mode (LLMSoloAgent / GymAgent):
             In solo mode, the user is replaced by a DummyUser and the agent operates autonomously:
             - Agent can ONLY send tool calls (no text messages to user)
             - Exception: Agent can send stop signal (###STOP###) to end simulation
             - Agent interacts exclusively with the environment until completion
+
+        Assistant solo mode (assistant_solo_mode):
+            One-shot assistant run: no LLM user simulator; the first turn is a user message
+            (ticket + instructions). The run ends when the assistant sends a text-only message
+            with no tool calls (termination AGENT_STOP for evaluation).
 
         Termination:
             Simulation ends when:
@@ -402,6 +421,7 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
         max_errors: int = 10,
         seed: Optional[int] = None,
         solo_mode: bool = False,
+        assistant_solo_mode: bool = False,
         simulation_id: Optional[str] = None,
         validate_communication: bool = False,
         timeout: Optional[float] = None,
@@ -425,6 +445,9 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
             solo_mode: If True, agent operates without user interaction (only tool calls allowed).
                       Requires agent to be LLMSoloAgent or GymAgent, and user to be DummyUser.
                       Defaults to False.
+            assistant_solo_mode: If True, seed with one user message (ticket + instructions), use
+                      DummyUser for routing, and stop when the assistant sends a non-tool message.
+                      Mutually exclusive with solo_mode. Defaults to False.
             validate_communication: If True, validates communication protocol rules (e.g., no mixed
                                    messages with both text and tool calls). Defaults to False.
             timeout: Maximum wallclock time in seconds. None means no timeout.
@@ -447,6 +470,7 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
         self.mode = CommunicationMode.HALF_DUPLEX
         self.trajectory: list[Message] = []
         self.solo_mode = solo_mode
+        self.assistant_solo_mode = assistant_solo_mode
         self.validate_communication = validate_communication
 
         # Turn-based routing state
@@ -513,6 +537,13 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
             ), "Agent must be a LLMSoloAgent or GymAgent in solo mode"
             assert isinstance(self.user, DummyUser), (
                 "User must be a DummyUser in solo mode"
+            )
+        if self.assistant_solo_mode:
+            assert not self.solo_mode, (
+                "assistant_solo_mode cannot be combined with solo_mode (LLMSoloAgent)"
+            )
+            assert isinstance(self.user, DummyUser), (
+                "assistant_solo_mode requires DummyUser"
             )
 
         # Initialize Environment state
@@ -625,8 +656,18 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
             self.trajectory = message_history
         else:
             # No message history - initialize fresh
-            self.user_state = self.user.get_init_state()
-            if not self.solo_mode:
+            if self.assistant_solo_mode:
+                first_message = _assistant_solo_first_user_message(self.task)
+                self.user_state = self.user.get_init_state(
+                    message_history=[first_message]
+                )
+                self.agent_state = self.agent.get_init_state(message_history=[])
+                self.trajectory = [first_message]
+                self.message = first_message
+                self.from_role = Role.USER
+                self.to_role = Role.AGENT
+            elif not self.solo_mode:
+                self.user_state = self.user.get_init_state()
                 first_message = deepcopy(DEFAULT_FIRST_AGENT_MESSAGE)
                 first_message.timestamp = get_now()
                 self.agent_state = self.agent.get_init_state(
@@ -637,6 +678,7 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
                 self.from_role = Role.AGENT
                 self.to_role = Role.USER
             else:
+                self.user_state = self.user.get_init_state()
                 self.agent_state = self.agent.get_init_state()
                 first_message, self.agent_state = self.agent.generate_next_message(
                     None, self.agent_state
@@ -725,7 +767,7 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
             )
 
         # Check if the agent is allowed to send a message to the user
-        if self.from_role == Role.AGENT and self.solo_mode:
+        if self.from_role == Role.AGENT and self.solo_mode and not self.assistant_solo_mode:
             if self.message.has_text_content() and not self.agent.is_stop(self.message):
                 raise exception_type(
                     f"{self.from_role.value} can only send tool calls. {self.message}"
@@ -838,6 +880,19 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
         )
         # AGENT/ENV -> USER
         if self.from_role in [Role.AGENT, Role.ENV] and self.to_role == Role.USER:
+            if (
+                self.assistant_solo_mode
+                and self.from_role == Role.AGENT
+                and not self.message.is_tool_call()
+            ):
+                # Final assistant reply (no tools): end run; evaluation uses AGENT_STOP.
+                self.done = True
+                self.termination_reason = TerminationReason.AGENT_STOP
+                self.step_count += 1
+                if self.validate_communication:
+                    self.check_communication_error()
+                self.environment.sync_tools()
+                return
             user_msg, self.user_state = self.user.generate_next_message(
                 self.message, self.user_state
             )
@@ -875,7 +930,11 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
             else:
                 self.to_role = Role.USER
                 # In solo mode, there is no user, so if the message is not a tool call and not a stop, then we end and report an agent error
-                if self.solo_mode and not self.agent.is_stop(agent_msg):
+                if (
+                    self.solo_mode
+                    and not self.assistant_solo_mode
+                    and not self.agent.is_stop(agent_msg)
+                ):
                     self.done = True
                     self.termination_reason = TerminationReason.AGENT_ERROR
         # AGENT/USER -> ENV

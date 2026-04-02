@@ -142,6 +142,7 @@ class AuthenticationClassifier:
                 UserMessage(role="user", content=user_prompt),
             ],
             call_name="classify_authentication",
+            use_genai_sdk=True,
         )
 
         # Parse response
@@ -186,6 +187,7 @@ class FullDuplexAuthenticationClassifier:
                 UserMessage(role="user", content=user_prompt),
             ],
             call_name="classify_authentication",
+            use_genai_sdk=True,
         )
 
         # Parse response

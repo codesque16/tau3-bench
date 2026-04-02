@@ -10,12 +10,14 @@ execute them.
 
 import asyncio
 import asyncio.base_events
+import contextvars
 import json
 import multiprocessing
 import os
 import random
 import threading
 import uuid
+import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextvars import ContextVar
 from pathlib import Path
@@ -47,6 +49,12 @@ from tau2.runner.checkpoint import (
 from tau2.runner.helpers import get_info, get_tasks, make_run_name
 from tau2.runner.progress import StatusMonitor, run_with_retry
 from tau2.runner.simulation import run_simulation
+from tau2.runner.tracing import (
+    LogfireRunTracer,
+    RunTracer,
+    build_run_id,
+    infer_policy_name,
+)
 from tau2.user.user_simulator import (
     get_global_user_sim_guidelines,
     get_global_user_sim_guidelines_voice,
@@ -349,6 +357,7 @@ def run_single_task(
     auto_review: bool = False,
     review_mode: str = "full",
     hallucination_feedback: Optional[str] = None,
+    tracer: Optional[RunTracer] = None,
 ) -> SimulationRun:
     """Run a single task simulation with logging and optional side effects.
 
@@ -377,10 +386,16 @@ def run_single_task(
     """
     simulation_id = str(uuid.uuid4())
     is_voice = isinstance(config, VoiceRunConfig)
+    log_user = (
+        "dummy_user"
+        if isinstance(config, TextRunConfig)
+        and getattr(config, "assistant_solo_mode", False)
+        else config.effective_user
+    )
 
     logger.info(
         f"STARTING SIMULATION: Domain: {config.domain}, Task: {task.id}, "
-        f"Agent: {config.effective_agent}, User: {config.effective_user}"
+        f"Agent: {config.effective_agent}, User: {log_user}"
     )
 
     with _TaskLogContext(simulation_id, save_dir, task, verbose_logs):
@@ -411,7 +426,10 @@ def run_single_task(
         # Layer 1: Run the simulation
         env_kwargs = _build_env_kwargs(config, task) or None
         simulation = run_simulation(
-            orchestrator, evaluation_type=evaluation_type, env_kwargs=env_kwargs
+            orchestrator,
+            evaluation_type=evaluation_type,
+            env_kwargs=env_kwargs,
+            tracer=tracer,
         )
 
         # Side effects
@@ -572,6 +590,8 @@ def run_tasks(
         tasks=tasks,
         simulations=[],
     )
+    tracer = LogfireRunTracer()
+    run_id = build_run_id(config, policy_name=infer_policy_name(config))
 
     # Checkpoint resume
     done_runs: set = set()
@@ -588,9 +608,10 @@ def run_tasks(
     # Create checkpoint saver and replacer (shared state for dir format)
     save_fn, replace_fn = create_checkpoint_fns(save_path, lock)
 
-    # Build argument list (skip already-completed runs)
-    args = []
+    # Build argument list grouped by trial (skip already-completed runs)
+    args_by_trial: dict[int, list[tuple[Task, int, int, str]]] = {}
     for trial in range(config.num_trials):
+        trial_args: list[tuple[Task, int, int, str]] = []
         for i, task in enumerate(tasks):
             if (trial, task.id, seeds[trial]) in done_runs:
                 console_text = Text(
@@ -600,7 +621,9 @@ def run_tasks(
                 ConsoleDisplay.console.print(console_text)
                 continue
             progress_str = f"{i}/{len(tasks)} (trial {trial + 1}/{config.num_trials})"
-            args.append((task, trial, seeds[trial], progress_str))
+            trial_args.append((task, trial, seeds[trial], progress_str))
+        if trial_args:
+            args_by_trial[trial] = trial_args
 
     # Status monitor
     total_count = len(tasks) * config.num_trials
@@ -647,21 +670,37 @@ def run_tasks(
             run_seed: int = seed,
             hallucination_feedback: Optional[str] = None,
         ):
-            return run_single_task(
-                config,
-                task,
-                seed=run_seed,
-                evaluation_type=evaluation_type,
-                save_dir=save_dir,
-                user_voice_settings=user_voice_settings,
-                user_persona_config=user_persona_config,
-                verbose_logs=config.verbose_logs,
-                audio_debug=config.audio_debug if is_voice else False,
-                audio_taps=config.audio_taps if is_voice else False,
-                auto_review=config.auto_review,
-                review_mode=config.review_mode,
-                hallucination_feedback=hallucination_feedback,
-            )
+            with tracer.task_span(task_id=str(task.id)) as task_span:
+                tracer.log_task_details(task)
+                result = run_single_task(
+                    config,
+                    task,
+                    seed=run_seed,
+                    evaluation_type=evaluation_type,
+                    save_dir=save_dir,
+                    user_voice_settings=user_voice_settings,
+                    user_persona_config=user_persona_config,
+                    verbose_logs=config.verbose_logs,
+                    audio_debug=config.audio_debug if is_voice else False,
+                    audio_taps=config.audio_taps if is_voice else False,
+                    auto_review=config.auto_review,
+                    review_mode=config.review_mode,
+                    hallucination_feedback=hallucination_feedback,
+                    tracer=tracer,
+                )
+                passed = bool(
+                    result.reward_info is not None and result.reward_info.reward >= 1.0
+                )
+                tracer.finalize_span(
+                    task_span,
+                    base_name=f"Task:{task.id}",
+                    passed=passed,
+                    task_id=str(task.id),
+                    reward=(
+                        result.reward_info.reward if result.reward_info is not None else None
+                    ),
+                )
+                return result
 
         try:
             result = run_with_retry(
@@ -798,40 +837,84 @@ def run_tasks(
             monitor.task_finished(task_key)
             _cleanup_thread_event_loop()
 
-    executor = ThreadPoolExecutor(max_workers=config.max_concurrency)
-    futures: dict = {}
-    try:
-        futures = {executor.submit(_run_tracked, *arg): arg for arg in args}
-        for future in as_completed(futures):
-            result = future.result()
-            simulation_results.simulations.append(result)
-    except KeyboardInterrupt:
-        ConsoleDisplay.console.print(
-            "\n[bold red]Ctrl+C received — cancelling remaining tasks...[/bold red]"
+    with tracer.run_span(run_id=run_id) as run_span:
+        tracer.log_experiment_config(
+            config=config,
+            run_id=run_id,
+            experiment_index=1,
+            experiment_total=1,
+            mode="conversation",
         )
-        shutdown_event.set()
-        executor.shutdown(wait=False, cancel_futures=True)
+        trial_concurrency = max(1, int(getattr(config, "trial_concurrency", 1) or 1))
 
-        n = len(simulation_results.simulations)
-        ConsoleDisplay.console.print(
-            f"[bold yellow]{n} simulation(s) already checkpointed. "
-            f"Use --auto-resume to continue later.[/bold yellow]"
+        def _run_trial(trial: int) -> list[SimulationRun]:
+            trial_args = args_by_trial.get(trial, [])
+            if not trial_args:
+                return []
+            trial_results: list[SimulationRun] = []
+            with tracer.trial_span(trial=trial + 1, seed=seeds[trial]):
+                task_executor = ThreadPoolExecutor(max_workers=config.max_concurrency)
+                try:
+                    trial_futures = {}
+                    for arg in trial_args:
+                        ctx = contextvars.copy_context()
+                        fut = task_executor.submit(
+                            lambda a=arg, c=ctx: c.run(_run_tracked, *a)
+                        )
+                        trial_futures[fut] = arg
+                    for future in as_completed(trial_futures):
+                        trial_results.append(future.result())
+                finally:
+                    task_executor.shutdown(wait=not shutdown_event.is_set(), cancel_futures=shutdown_event.is_set())
+            return trial_results
+
+        trial_executor = ThreadPoolExecutor(
+            max_workers=min(trial_concurrency, max(1, len(args_by_trial)))
         )
-        monitor.stop()
+        try:
+            trial_futures: dict = {}
+            for trial in range(config.num_trials):
+                if not args_by_trial.get(trial):
+                    continue
+                ctx = contextvars.copy_context()
+                fut = trial_executor.submit(lambda t=trial, c=ctx: c.run(_run_trial, t))
+                trial_futures[fut] = trial
+            for trial_future in as_completed(trial_futures):
+                simulation_results.simulations.extend(trial_future.result())
+        except KeyboardInterrupt:
+            ConsoleDisplay.console.print(
+                "\n[bold red]Ctrl+C received — cancelling remaining tasks...[/bold red]"
+            )
+            shutdown_event.set()
+            trial_executor.shutdown(wait=False, cancel_futures=True)
 
-        # Force-exit: background threads (litellm, websocket loops, etc.)
-        # hold the process alive and produce noisy errors during interpreter
-        # shutdown.  All completed results are already on disk via save_fn.
-        os._exit(130)
-    finally:
-        monitor.stop()
-        if not shutdown_event.is_set():
-            executor.shutdown(wait=True)
+            n = len(simulation_results.simulations)
+            ConsoleDisplay.console.print(
+                f"[bold yellow]{n} simulation(s) already checkpointed. "
+                f"Use --auto-resume to continue later.[/bold yellow]"
+            )
+            monitor.stop()
 
-    ConsoleDisplay.console.print(
-        "\n[bold green]Successfully completed all simulations![/bold green]\n"
-        "To review the simulations, run: [bold blue]tau2 view[/bold blue]"
-    )
+            # Force-exit: background threads (litellm, websocket loops, etc.)
+            # hold the process alive and produce noisy errors during interpreter
+            # shutdown.  All completed results are already on disk via save_fn.
+            os._exit(130)
+        finally:
+            monitor.stop()
+            if not shutdown_event.is_set():
+                trial_executor.shutdown(wait=True)
+
+        ConsoleDisplay.console.print(
+            "\n[bold green]Successfully completed all simulations![/bold green]\n"
+            "To review the simulations, run: [bold blue]tau2 view[/bold blue]"
+        )
+        metrics = compute_metrics(simulation_results)
+        tracer.log_metrics(metrics)
+        tracer.finalize_run_span(
+            run_span,
+            run_id=run_id,
+            pass_hat_1=metrics.pass_hat_ks.get(1),
+        )
     return simulation_results
 
 
@@ -857,6 +940,7 @@ def run_domain(config: RunConfig) -> Results:
         Results object with all simulation runs.
     """
     config.validate()
+    _log_logfire_startup_status()
     ConsoleDisplay.display_run_config(config)
 
     # Load tasks
@@ -905,3 +989,65 @@ def run_domain(config: RunConfig) -> Results:
     ConsoleDisplay.display_agent_metrics(metrics)
 
     return simulation_results
+
+
+def _log_logfire_startup_status() -> None:
+    """Emit one explicit startup line about Logfire configuration state."""
+    try:
+        import logfire  # type: ignore
+    except Exception as e:
+        logger.warning(f"Logfire status: NOT CONFIGURED (import failed: {e})")
+        return
+
+    # Common env vars used with token/project-based setup.
+    token = (
+        os.environ.get("LOGFIRE_TOKEN")
+        or os.environ.get("PYDANTIC_LOGFIRE_TOKEN")
+        or ""
+    ).strip()
+    project = (
+        os.environ.get("LOGFIRE_PROJECT_NAME")
+        or os.environ.get("PYDANTIC_LOGFIRE_PROJECT")
+        or ""
+    ).strip()
+
+    # Configure once at startup so spans are emitted when token/env is present.
+    # inspect_arguments=False avoids noisy introspection warnings in non-file contexts.
+    with warnings.catch_warnings(record=True) as captured:
+        warnings.simplefilter("always")
+        configure_ok = True
+        try:
+            logfire.configure(
+                scrubbing=False,
+                inspect_arguments=False,
+                service_name=os.environ.get("LOGFIRE_SERVICE_NAME", "tau2-mermaid"),
+            )
+        except Exception as e:
+            configure_ok = False
+            logger.warning(
+                f"Logfire status: NOT CONFIGURED (configure failed: {e}, "
+                f"project={project or 'unset'}, token={'set' if token else 'unset'})"
+            )
+            return
+
+    warning_messages = [str(w.message) for w in captured]
+    has_not_configured_warning = any(
+        "No logs or spans will be created until `logfire.configure()` has been called"
+        in m
+        for m in warning_messages
+    )
+    has_unreachable_warning = any("Logfire API is unreachable" in m for m in warning_messages)
+
+    if configure_ok and not has_not_configured_warning and not has_unreachable_warning:
+        logger.info(
+            f"Logfire status: CONFIGURED (project={project or 'unset'}, token={'set' if token else 'unset'})"
+        )
+    elif has_unreachable_warning:
+        logger.warning(
+            f"Logfire status: PARTIAL (configured but API unreachable; project={project or 'unset'}, "
+            f"token={'set' if token else 'unset'})"
+        )
+    else:
+        logger.warning(
+            f"Logfire status: NOT CONFIGURED (project={project or 'unset'}, token={'set' if token else 'unset'})"
+        )

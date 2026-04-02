@@ -75,6 +75,87 @@ If you're using voice features, add the following to your `.env` file:
 - `ELEVENLABS_API_KEY` — for voice synthesis
 - `DEEPGRAM_API_KEY` — for voice transcription
 
+### Vertex Agent (google.genai SDK, optional)
+
+If you want to run the text agent with Vertex AI through the Google GenAI SDK (not LiteLLM), set:
+- `VERTEXAI_PROJECT=<your_gcp_project_id>`
+- `VERTEXAI_LOCATION=global` (recommended for Gemini 3 models)
+
+Then run:
+
+```bash
+tau2 run --domain retail --agent vertex_agent --agent-llm gemini-2.5-flash \
+  --user-llm gpt-4.1 --num-trials 1 --num-tasks 5
+```
+
+To run both sides without LiteLLM, use:
+
+```bash
+tau2 run --domain retail \
+  --agent vertex_agent --agent-llm gemini-3.1-flash-lite-preview \
+  --user vertex_user_simulator --user-llm gemini/gemini-3.1-pro \
+  --num-trials 1 --num-tasks 5
+```
+
+### YAML config run (optional)
+
+You can also keep run settings in a YAML file and execute with a single command:
+
+```bash
+uv run tau2config --config examples/retail_vertex_text.yaml
+```
+
+This is equivalent to passing the same knobs via `tau2 run`.
+Use snake_case or kebab-case keys in YAML (for example, `max_concurrency` or `max-concurrency`).
+
+`tau2config` supports both:
+- single-run YAML (top-level keys are one run), and
+- multi-run YAML using `runs` + top-level `enabled_run_ids`.
+
+Examples:
+
+```yaml
+domain: retail
+seed: 626729
+enabled_run_ids: ["run_a"]
+runs:
+  run_a:
+    num_trials: 4
+    trial_concurrency: 2
+    max_concurrency: 20
+    save_to: retail_a
+    fresh: true # -> retail_a_<MM_DD_HH_MIN_SEC>
+    # task_ids omitted -> run all task ids in the split
+    agent: vertex_agent
+    agent_llm: gemini-3.1-flash-lite-preview
+    agent_pricing:
+      # Example: Gemini 3.1 Flash-Lite Preview (Standard, <=200K context)
+      input_cost_per_million: 0.25
+      cached_input_cost_per_million: 0.03
+      output_cost_per_million: 1.50
+    user: vertex_user_simulator
+    user_llm: gemini-3.1-pro-preview
+    user_pricing:
+      # Example: Gemini 3.1 Pro Preview (Standard, <=200K context)
+      input_cost_per_million: 2.00
+      cached_input_cost_per_million: 0.20
+      output_cost_per_million: 12.00
+  run_b:
+    enabled: false
+    task_ids: ["0", "1", "2"]
+    save_to: retail_b
+```
+
+You can also override selection from CLI:
+
+```bash
+uv run tau2config --config examples/retail_vertex_text.yaml --run-ids run_a run_b
+```
+
+When using Vertex models and you want run-level cost telemetry, set both
+`agent_pricing` and `user_pricing` explicitly per run using the current values from the
+Vertex pricing page.
+
 ## Running Your First Evaluation
 
 ### Standard text-based evaluation (half-duplex)

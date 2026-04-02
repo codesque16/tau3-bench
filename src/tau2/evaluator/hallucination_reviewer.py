@@ -197,6 +197,7 @@ class FullDuplexHallucinationReviewer:
             model=DEFAULT_LLM_EVAL_USER_SIMULATOR,
             messages=messages,
             call_name="llm_judge_hallucination_check",
+            use_genai_sdk=True,
         )
 
         try:

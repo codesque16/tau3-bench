@@ -39,6 +39,7 @@ from tau2.data_model.message import (
     UserMessage,
 )
 from tau2.environment.tool import Tool
+from tau2.utils.genai_logfire import genai_generate_with_logfire
 
 # Suppress Pydantic serialization warnings from LiteLLM
 # These occur due to type mismatches between streaming and non-streaming response types
@@ -352,6 +353,222 @@ def _write_llm_log(
         json.dump(call_data, f, indent=2)
 
 
+def _normalize_genai_model_name(model: str) -> str:
+    model = (model or "").strip()
+    if model.startswith("vertex_ai/"):
+        return model.removeprefix("vertex_ai/")
+    if model.startswith("gemini/"):
+        return model.removeprefix("gemini/")
+    return model
+
+
+def _generate_with_genai_sdk(
+    *,
+    model: str,
+    messages: list[Message],
+    tools: Optional[list[Tool]],
+    call_name: Optional[str],
+    kwargs: dict[str, Any],
+) -> AssistantMessage:
+    from google import genai
+    from google.genai import types
+
+    project = os.environ.get("VERTEXAI_PROJECT") or os.environ.get("GOOGLE_CLOUD_PROJECT")
+    location = os.environ.get("VERTEXAI_LOCATION") or "global"
+    if not project:
+        raise ValueError(
+            "VERTEXAI_PROJECT (or GOOGLE_CLOUD_PROJECT) must be set when use_genai_sdk=True."
+        )
+
+    client = genai.Client(vertexai=True, project=project, location=location)
+    model_name = _normalize_genai_model_name(model)
+
+    tool_name_by_id: dict[str, str] = {}
+    contents: list[Any] = []
+    for msg in messages:
+        if isinstance(msg, SystemMessage):
+            continue
+        if isinstance(msg, UserMessage):
+            contents.append(
+                types.Content(role="user", parts=[types.Part(text=msg.content or "")])
+            )
+        elif isinstance(msg, AssistantMessage):
+            parts: list[Any] = []
+            if msg.content:
+                parts.append(types.Part(text=msg.content))
+            if msg.tool_calls:
+                for tc in msg.tool_calls:
+                    tool_name_by_id[tc.id] = tc.name
+                    parts.append(
+                        types.Part(
+                            function_call=types.FunctionCall(
+                                id=tc.id or None,
+                                name=tc.name,
+                                args=tc.arguments or {},
+                            )
+                        )
+                    )
+            if not parts:
+                parts = [types.Part(text="")]
+            contents.append(types.Content(role="model", parts=parts))
+        elif isinstance(msg, ToolMessage):
+            tool_name = tool_name_by_id.get(msg.id, "unknown_tool")
+            payload = msg.content or ""
+            try:
+                parsed = json.loads(payload) if payload.strip() else ""
+            except Exception:
+                parsed = payload
+            response_payload = parsed if isinstance(parsed, dict) else {"result": parsed}
+            contents.append(
+                types.Content(
+                    role="function",
+                    parts=[
+                        types.Part(
+                            function_response=types.FunctionResponse(
+                                id=msg.id or None,
+                                name=tool_name,
+                                response=response_payload,
+                            )
+                        )
+                    ],
+                )
+            )
+
+    tools_schema = [tool.openai_schema for tool in tools] if tools else None
+    genai_tools: list[Any] = []
+    if tools_schema:
+        declarations = []
+        for tool_schema in tools_schema:
+            fn = tool_schema.get("function", {})
+            name = fn.get("name")
+            if not name:
+                continue
+            params = fn.get("parameters") or {"type": "object", "properties": {}}
+            schema = types.Schema.from_json_schema(
+                json_schema=types.JSONSchema.model_validate(params)
+            )
+            declarations.append(
+                types.FunctionDeclaration(
+                    name=name,
+                    description=str(fn.get("description") or ""),
+                    parameters=schema,
+                )
+            )
+        if declarations:
+            genai_tools = [types.Tool(function_declarations=declarations)]
+
+    config_kwargs: dict[str, Any] = {
+        "temperature": kwargs.get("temperature", 0.0),
+    }
+    if kwargs.get("max_tokens") is not None:
+        config_kwargs["max_output_tokens"] = int(kwargs["max_tokens"])
+    if kwargs.get("seed") is not None:
+        config_kwargs["seed"] = int(kwargs["seed"])
+    if genai_tools:
+        config_kwargs["tools"] = genai_tools
+        config_kwargs["automatic_function_calling"] = (
+            types.AutomaticFunctionCallingConfig(disable=True)
+        )
+    system_messages = [m for m in messages if isinstance(m, SystemMessage)]
+    if system_messages:
+        config_kwargs["system_instruction"] = system_messages[0].content
+    reasoning_level = kwargs.get("reasoning_level")
+    if reasoning_level is not None:
+        level = str(reasoning_level).strip().upper()
+        if level in {"LOW", "MEDIUM", "HIGH"}:
+            config_kwargs["thinking_config"] = types.ThinkingConfig(
+                include_thoughts=bool(kwargs.get("include_thoughts", True)),
+                thinking_level=level,
+            )
+
+    request_data = {
+        "model": model_name,
+        "input_model": model,
+        "messages": _format_messages_for_logging(to_litellm_messages(messages)),
+        "tools": tools_schema,
+        "tool_choice": None,
+        "kwargs": {
+            k: str(v) if not isinstance(v, (str, int, float, bool, type(None))) else v
+            for k, v in kwargs.items()
+        },
+        "timestamp": datetime.now().isoformat(),
+    }
+
+    start_time = time.perf_counter()
+    response = genai_generate_with_logfire(
+        client=client,
+        model=model_name,
+        contents=contents,
+        config=types.GenerateContentConfig(**config_kwargs),
+        actor="evaluation",
+        call_name=call_name or "generate",
+    )
+    generation_time_seconds = time.perf_counter() - start_time
+
+    content = ""
+    tool_calls: list[ToolCall] = []
+    candidates = getattr(response, "candidates", None) or []
+    if candidates:
+        parts = getattr(candidates[0].content, "parts", None) or []
+        for idx, part in enumerate(parts):
+            text = getattr(part, "text", None)
+            if isinstance(text, str) and text:
+                content += text
+            fn_call = getattr(part, "function_call", None)
+            if fn_call is not None:
+                call_id = getattr(fn_call, "id", None) or f"call_{idx}"
+                args = getattr(fn_call, "args", None) or {}
+                if not isinstance(args, dict):
+                    args = {}
+                tool_calls.append(
+                    ToolCall(
+                        id=call_id,
+                        name=getattr(fn_call, "name", "") or "",
+                        arguments=args,
+                    )
+                )
+
+    usage = None
+    usage_metadata = getattr(response, "usage_metadata", None)
+    if usage_metadata is not None:
+        prompt_tokens = (
+            getattr(usage_metadata, "prompt_token_count", None)
+            or getattr(usage_metadata, "input_token_count", None)
+            or 0
+        )
+        completion_tokens = (
+            getattr(usage_metadata, "candidates_token_count", None)
+            or getattr(usage_metadata, "output_token_count", None)
+            or 0
+        )
+        usage = {
+            "prompt_tokens": int(prompt_tokens),
+            "completion_tokens": int(completion_tokens),
+        }
+
+    response_data = {
+        "timestamp": datetime.now().isoformat(),
+        "content": content,
+        "tool_calls": [tc.model_dump() for tc in tool_calls] if tool_calls else None,
+        "cost": None,
+        "usage": usage,
+        "generation_time_seconds": generation_time_seconds,
+    }
+    _write_llm_log(request_data, response_data, call_name=call_name)
+
+    return AssistantMessage(
+        role="assistant",
+        content=content if content else None,
+        tool_calls=tool_calls or None,
+        cost=None,
+        usage=usage,
+        raw_data=response.model_dump(mode="json")
+        if hasattr(response, "model_dump")
+        else None,
+        generation_time_seconds=generation_time_seconds,
+    )
+
+
 def generate(
     model: str,
     messages: list[Message],
@@ -378,6 +595,15 @@ def generate(
     validate_message_history(messages)
     if kwargs.get("num_retries") is None:
         kwargs["num_retries"] = DEFAULT_MAX_RETRIES
+    use_genai_sdk = bool(kwargs.pop("use_genai_sdk", False))
+    if use_genai_sdk:
+        return _generate_with_genai_sdk(
+            model=model,
+            messages=messages,
+            tools=tools,
+            call_name=call_name,
+            kwargs=kwargs,
+        )
 
     # Vertex AI Gemini 3 models require VERTEXAI_LOCATION="global"
     if model.startswith("vertex_ai/gemini-3") and not os.environ.get(

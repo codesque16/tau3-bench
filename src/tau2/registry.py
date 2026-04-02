@@ -14,6 +14,7 @@ from tau2.agent.llm_agent import (
     create_llm_gt_agent,
     create_llm_solo_agent,
 )
+from tau2.agent.vertex_agent import create_vertex_agent
 from tau2.data_model.tasks import Task
 from tau2.domains.airline.environment import (
     get_environment as airline_domain_get_environment,
@@ -55,6 +56,7 @@ from tau2.domains.telecom.environment import (
 )
 from tau2.environment.environment import Environment
 from tau2.user.user_simulator import DummyUser, UserSimulator
+from tau2.user.vertex_user_simulator import VertexUserSimulator
 from tau2.user.user_simulator_base import FullDuplexUser, HalfDuplexUser
 
 
@@ -281,6 +283,7 @@ try:
     logger.debug("Registering default components...")
     # User implementations
     registry.register_user(UserSimulator, "user_simulator")
+    registry.register_user(VertexUserSimulator, "vertex_user_simulator")
     registry.register_user(DummyUser, "dummy_user")
     try:
         from tau2.user.user_simulator_streaming import VoiceStreamingUserSimulator
@@ -295,6 +298,7 @@ try:
 
     # Agent factories
     registry.register_agent_factory(create_llm_agent, "llm_agent")
+    registry.register_agent_factory(create_vertex_agent, "vertex_agent")
     registry.register_agent_factory(
         create_llm_gt_agent,
         "llm_agent_gt",

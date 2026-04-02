@@ -14,6 +14,7 @@ from tau2.evaluator.evaluator import EvaluationType, evaluate_simulation
 from tau2.orchestrator.full_duplex_orchestrator import FullDuplexOrchestrator
 from tau2.orchestrator.modes import CommunicationMode
 from tau2.orchestrator.orchestrator import Orchestrator
+from tau2.runner.tracing import RunTracer
 
 
 def run_simulation(
@@ -21,6 +22,7 @@ def run_simulation(
     *,
     evaluation_type: EvaluationType = EvaluationType.ALL,
     env_kwargs: Optional[dict] = None,
+    tracer: Optional[RunTracer] = None,
 ) -> SimulationRun:
     """Run a simulation and evaluate the result.
 
@@ -55,38 +57,58 @@ def run_simulation(
         result = run_simulation(orchestrator)
         print(result.reward_info.reward)
     """
-    # Run the orchestrator
-    simulation = orchestrator.run()
+    tracer = tracer or RunTracer()
+    simulation_id = str(getattr(orchestrator, "simulation_id", "unknown"))
+    task = getattr(orchestrator, "task", None)
+    task_id = str(getattr(task, "id", "unknown"))
+    domain_name = str(getattr(orchestrator, "domain", None) or "unknown")
+    with tracer.simulation_span(
+        simulation_id=simulation_id,
+        domain=domain_name,
+        task_id=task_id,
+    ):
+        # Run the orchestrator
+        simulation = orchestrator.run()
 
-    # Save the actual policy used for this simulation
-    simulation.policy = orchestrator.environment.get_policy()
+        # Save the actual policy used for this simulation
+        simulation.policy = orchestrator.environment.get_policy()
 
-    # Extract context from the orchestrator -- no external params needed
-    domain = orchestrator.environment.get_domain_name()
-    task = orchestrator.task
-    is_full_duplex = isinstance(orchestrator, FullDuplexOrchestrator)
-    mode = (
-        CommunicationMode.FULL_DUPLEX
-        if is_full_duplex
-        else CommunicationMode.HALF_DUPLEX
-    )
-    solo_mode = getattr(orchestrator, "solo_mode", False)
+        # Extract context from the orchestrator -- no external params needed
+        domain = orchestrator.environment.get_domain_name()
+        task = orchestrator.task
+        is_full_duplex = isinstance(orchestrator, FullDuplexOrchestrator)
+        mode = (
+            CommunicationMode.FULL_DUPLEX
+            if is_full_duplex
+            else CommunicationMode.HALF_DUPLEX
+        )
+        solo_mode = getattr(orchestrator, "solo_mode", False)
 
-    # Evaluate
-    reward_info = evaluate_simulation(
-        simulation=simulation,
-        task=task,
-        evaluation_type=evaluation_type,
-        solo_mode=solo_mode,
-        domain=domain,
-        mode=mode,
-        env_kwargs=env_kwargs,
-    )
-    simulation.reward_info = reward_info
+        # Evaluate
+        with tracer.evaluation_span() as evaluation_span:
+            reward_info = evaluate_simulation(
+                simulation=simulation,
+                task=task,
+                evaluation_type=evaluation_type,
+                solo_mode=solo_mode,
+                domain=domain,
+                mode=mode,
+                env_kwargs=env_kwargs,
+                tracer=tracer,
+            )
+            tracer.finalize_span(
+                evaluation_span,
+                base_name="evaluation",
+                passed=(reward_info.reward >= 1.0),
+                reward=reward_info.reward,
+                reward_breakdown=reward_info.reward_breakdown,
+                evaluation_info=reward_info.info,
+            )
+        simulation.reward_info = reward_info
 
-    logger.info(
-        f"Simulation complete: domain={domain}, task={task.id}, "
-        f"reward={reward_info.reward}"
-    )
+        logger.info(
+            f"Simulation complete: domain={domain}, task={task.id}, "
+            f"reward={reward_info.reward}"
+        )
 
-    return simulation
+        return simulation

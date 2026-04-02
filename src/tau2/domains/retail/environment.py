@@ -1,6 +1,6 @@
 # Copyright Sierra
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 from tau2.data_model.tasks import Task
 from tau2.domains.retail.data_model import RetailDB
@@ -17,13 +17,15 @@ from tau2.utils import load_file
 def get_environment(
     db: Optional[RetailDB] = None,
     solo_mode: bool = False,
+    policy_path: Optional[Union[str, Path]] = None,
 ) -> Environment:
     if solo_mode:
         raise ValueError("Retail domain does not support solo mode")
     if db is None:
         db = RetailDB.load(RETAIL_DB_PATH)
     tools = RetailTools(db)
-    with open(RETAIL_POLICY_PATH, "r") as fp:
+    resolved_policy = Path(policy_path) if policy_path is not None else RETAIL_POLICY_PATH
+    with open(resolved_policy, "r") as fp:
         policy = fp.read()
     return Environment(
         domain_name="retail",

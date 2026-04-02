@@ -20,7 +20,38 @@ class AgentMetrics(BaseModel):
     # Core metrics
     avg_reward: float
     pass_hat_ks: dict[int, float]
+    pass_hat_ks_db_only: dict[int, float] = {}
+    pass_hat_ks_db_and_communication: dict[int, float] = {}
+    pass_hat_ks_db_communication_nl: dict[int, float] = {}
     avg_agent_cost: float
+    avg_user_cost: float = 0.0
+    avg_total_cost: float = 0.0
+    median_agent_cost: float = 0.0
+    median_user_cost: float = 0.0
+    median_total_cost: float = 0.0
+    total_agent_cost: float = 0.0
+    total_user_cost: float = 0.0
+    total_cost: float = 0.0
+
+    # Detailed token/cost telemetry
+    total_agent_input_tokens: int = 0
+    total_agent_cached_input_tokens: int = 0
+    total_agent_output_tokens: int = 0
+    total_agent_reasoning_tokens: int = 0
+    total_user_input_tokens: int = 0
+    total_user_cached_input_tokens: int = 0
+    total_user_output_tokens: int = 0
+    total_user_reasoning_tokens: int = 0
+    agent_cached_input_percentage: float = 0.0
+    agent_reasoning_output_percentage: float = 0.0
+    user_cached_input_percentage: float = 0.0
+    user_reasoning_output_percentage: float = 0.0
+    total_agent_input_cost_with_cache: float = 0.0
+    total_agent_input_cost_without_cache: float = 0.0
+    total_agent_output_cost: float = 0.0
+    total_user_input_cost_with_cache: float = 0.0
+    total_user_input_cost_without_cache: float = 0.0
+    total_user_output_cost: float = 0.0
 
     # Simulation counts
     total_simulations: int = 0
@@ -242,7 +273,132 @@ def compute_metrics(results: Results) -> AgentMetrics:
         if match := re.match(r"pass\^(\d+)", column):
             k = int(match.group(1))
             pass_hat_ks[k] = df_pass_hat_k[column].mean()
+
+    def _all_met(checks: list | None) -> bool:
+        if not checks:
+            return True
+        return all(bool(getattr(c, "met", False)) for c in checks)
+
+    def _compute_pass_hat_from_flags(flags_by_task: dict[str, list[bool]]) -> dict[int, float]:
+        if not flags_by_task:
+            return {}
+        min_trials = min((len(v) for v in flags_by_task.values()), default=0)
+        if min_trials <= 0:
+            return {}
+        out: dict[int, float] = {}
+        for k in range(1, min_trials + 1):
+            per_task_vals: list[float] = []
+            for task_flags in flags_by_task.values():
+                success_count = sum(1 for f in task_flags if f)
+                per_task_vals.append(pass_hat_k(len(task_flags), success_count, k))
+            out[k] = sum(per_task_vals) / len(per_task_vals)
+        return out
+
+    db_only_flags: dict[str, list[bool]] = defaultdict(list)
+    db_comm_flags: dict[str, list[bool]] = defaultdict(list)
+    db_comm_nl_flags: dict[str, list[bool]] = defaultdict(list)
+    for sim in evaluated_sims:
+        ri = sim.reward_info
+        db_ok = bool(ri and ri.db_check and ri.db_check.db_match)
+        comm_ok = bool(ri and _all_met(ri.communicate_checks))
+        nl_ok = bool(ri and _all_met(ri.nl_assertions))
+        db_only_flags[str(sim.task_id)].append(db_ok)
+        db_comm_flags[str(sim.task_id)].append(db_ok and comm_ok)
+        db_comm_nl_flags[str(sim.task_id)].append(db_ok and comm_ok and nl_ok)
+
+    pass_hat_ks_db_only = _compute_pass_hat_from_flags(db_only_flags)
+    pass_hat_ks_db_and_communication = _compute_pass_hat_from_flags(db_comm_flags)
+    pass_hat_ks_db_communication_nl = _compute_pass_hat_from_flags(db_comm_nl_flags)
     avg_agent_cost = df.agent_cost.mean()
+    avg_user_cost = df.user_cost.mean() if "user_cost" in df.columns else 0.0
+
+    # Cost aggregates (fallback-safe for mixed providers)
+    agent_cost_series = pd.to_numeric(df.agent_cost, errors="coerce").fillna(0.0)
+    user_cost_series = (
+        pd.to_numeric(df.user_cost, errors="coerce").fillna(0.0)
+        if "user_cost" in df.columns
+        else pd.Series([0.0] * len(df))
+    )
+    total_cost_series = agent_cost_series + user_cost_series
+    total_agent_cost = float(agent_cost_series.sum())
+    total_user_cost = float(user_cost_series.sum())
+    total_cost = float(total_cost_series.sum())
+    avg_total_cost = float(total_cost_series.mean()) if len(total_cost_series) else 0.0
+    median_agent_cost = float(agent_cost_series.median()) if len(agent_cost_series) else 0.0
+    median_user_cost = float(user_cost_series.median()) if len(user_cost_series) else 0.0
+    median_total_cost = float(total_cost_series.median()) if len(total_cost_series) else 0.0
+
+    # Token/cost telemetry from message usage (for Vertex-style explicit accounting).
+    total_agent_input_tokens = 0
+    total_agent_cached_input_tokens = 0
+    total_agent_output_tokens = 0
+    total_agent_reasoning_tokens = 0
+    total_user_input_tokens = 0
+    total_user_cached_input_tokens = 0
+    total_user_output_tokens = 0
+    total_user_reasoning_tokens = 0
+    total_agent_input_cost_with_cache = 0.0
+    total_agent_input_cost_without_cache = 0.0
+    total_agent_output_cost = 0.0
+    total_user_input_cost_with_cache = 0.0
+    total_user_input_cost_without_cache = 0.0
+    total_user_output_cost = 0.0
+
+    for sim in evaluated_sims:
+        for msg in sim.get_messages():
+            if not hasattr(msg, "usage") or not isinstance(msg.usage, dict):
+                continue
+            usage = msg.usage
+            prompt_tokens = int(usage.get("prompt_tokens", 0) or 0)
+            completion_tokens = int(usage.get("completion_tokens", 0) or 0)
+            cached_input_tokens = int(usage.get("cached_input_tokens", 0) or 0)
+            reasoning_tokens = int(usage.get("reasoning_tokens", 0) or 0)
+            # For metrics, output tokens should include reasoning tokens so percentages
+            # remain bounded and reflect true generated output volume.
+            output_tokens = completion_tokens + reasoning_tokens
+            input_cost_with_cache = float(usage.get("input_cost_with_cache_usd", 0.0) or 0.0)
+            input_cost_without_cache = float(
+                usage.get("input_cost_without_cache_usd", 0.0) or 0.0
+            )
+            output_cost = float(usage.get("output_cost_usd", 0.0) or 0.0)
+
+            if msg.role == "assistant":
+                total_agent_input_tokens += prompt_tokens
+                total_agent_cached_input_tokens += cached_input_tokens
+                total_agent_output_tokens += output_tokens
+                total_agent_reasoning_tokens += reasoning_tokens
+                total_agent_input_cost_with_cache += input_cost_with_cache
+                total_agent_input_cost_without_cache += input_cost_without_cache
+                total_agent_output_cost += output_cost
+            elif msg.role == "user":
+                total_user_input_tokens += prompt_tokens
+                total_user_cached_input_tokens += cached_input_tokens
+                total_user_output_tokens += output_tokens
+                total_user_reasoning_tokens += reasoning_tokens
+                total_user_input_cost_with_cache += input_cost_with_cache
+                total_user_input_cost_without_cache += input_cost_without_cache
+                total_user_output_cost += output_cost
+
+    agent_cached_input_percentage = (
+        (100.0 * total_agent_cached_input_tokens / total_agent_input_tokens)
+        if total_agent_input_tokens > 0
+        else 0.0
+    )
+    agent_reasoning_output_percentage = (
+        (100.0 * total_agent_reasoning_tokens / total_agent_output_tokens)
+        if total_agent_output_tokens > 0
+        else 0.0
+    )
+    user_cached_input_percentage = (
+        (100.0 * total_user_cached_input_tokens / total_user_input_tokens)
+        if total_user_input_tokens > 0
+        else 0.0
+    )
+    user_reasoning_output_percentage = (
+        (100.0 * total_user_reasoning_tokens / total_user_output_tokens)
+        if total_user_output_tokens > 0
+        else 0.0
+    )
 
     # Counts exclude infrastructure errors
     total_simulations = len(evaluated_sims)
@@ -446,7 +602,36 @@ def compute_metrics(results: Results) -> AgentMetrics:
     return AgentMetrics(
         avg_reward=avg_reward,
         pass_hat_ks=pass_hat_ks,
+        pass_hat_ks_db_only=pass_hat_ks_db_only,
+        pass_hat_ks_db_and_communication=pass_hat_ks_db_and_communication,
+        pass_hat_ks_db_communication_nl=pass_hat_ks_db_communication_nl,
         avg_agent_cost=avg_agent_cost,
+        avg_user_cost=avg_user_cost,
+        avg_total_cost=avg_total_cost,
+        median_agent_cost=median_agent_cost,
+        median_user_cost=median_user_cost,
+        median_total_cost=median_total_cost,
+        total_agent_cost=total_agent_cost,
+        total_user_cost=total_user_cost,
+        total_cost=total_cost,
+        total_agent_input_tokens=total_agent_input_tokens,
+        total_agent_cached_input_tokens=total_agent_cached_input_tokens,
+        total_agent_output_tokens=total_agent_output_tokens,
+        total_agent_reasoning_tokens=total_agent_reasoning_tokens,
+        total_user_input_tokens=total_user_input_tokens,
+        total_user_cached_input_tokens=total_user_cached_input_tokens,
+        total_user_output_tokens=total_user_output_tokens,
+        total_user_reasoning_tokens=total_user_reasoning_tokens,
+        agent_cached_input_percentage=agent_cached_input_percentage,
+        agent_reasoning_output_percentage=agent_reasoning_output_percentage,
+        user_cached_input_percentage=user_cached_input_percentage,
+        user_reasoning_output_percentage=user_reasoning_output_percentage,
+        total_agent_input_cost_with_cache=total_agent_input_cost_with_cache,
+        total_agent_input_cost_without_cache=total_agent_input_cost_without_cache,
+        total_agent_output_cost=total_agent_output_cost,
+        total_user_input_cost_with_cache=total_user_input_cost_with_cache,
+        total_user_input_cost_without_cache=total_user_input_cost_without_cache,
+        total_user_output_cost=total_user_output_cost,
         total_simulations=total_simulations,
         total_tasks=total_tasks,
         infra_error_count=infra_error_count,

@@ -156,6 +156,12 @@ def add_run_args(parser):
         help=f"The maximum number of concurrent simulations to run. Default is {DEFAULT_MAX_CONCURRENCY}.",
     )
     parser.add_argument(
+        "--trial-concurrency",
+        type=int,
+        default=1,
+        help="The maximum number of trials to run concurrently. Default is 1.",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=DEFAULT_SEED,
@@ -634,6 +640,7 @@ def main():
             timeout=args.timeout,
             save_to=args.save_to,
             max_concurrency=args.max_concurrency,
+            trial_concurrency=args.trial_concurrency,
             seed=args.seed,
             log_level=args.log_level,
             verbose_logs=args.verbose_logs,

@@ -419,6 +419,7 @@ class UserOnlyReviewer:
             model=DEFAULT_LLM_EVAL_USER_SIMULATOR,
             messages=messages,
             call_name="llm_judge_user_only_review",
+            use_genai_sdk=True,
         )
 
         try:
@@ -516,6 +517,7 @@ class FullDuplexUserOnlyReviewer:
             model=DEFAULT_LLM_EVAL_USER_SIMULATOR,
             messages=llm_messages,
             call_name="llm_judge_user_only_streaming_review",
+            use_genai_sdk=True,
         )
 
         try:

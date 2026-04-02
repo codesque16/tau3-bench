@@ -508,6 +508,7 @@ class ConversationReviewer:
             model=DEFAULT_LLM_EVAL_USER_SIMULATOR,
             messages=messages,
             call_name="llm_judge_review",
+            use_genai_sdk=True,
         )
 
         try:
@@ -619,6 +620,7 @@ class FullDuplexConversationReviewer:
             model=DEFAULT_LLM_EVAL_USER_SIMULATOR,
             messages=llm_messages,
             call_name="llm_judge_streaming_review",
+            use_genai_sdk=True,
         )
 
         try:

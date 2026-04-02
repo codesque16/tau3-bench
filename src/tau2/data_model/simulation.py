@@ -360,11 +360,25 @@ class BaseRunConfig(BaseModel):
             default=DEFAULT_SAVE_TO,
         ),
     ]
+    config_name: Annotated[
+        Optional[str],
+        Field(
+            description="Optional YAML config name used to launch this run (for trace labeling).",
+            default=None,
+        ),
+    ]
     max_concurrency: Annotated[
         int,
         Field(
             description="The maximum number of concurrent simulations to run",
             default=DEFAULT_MAX_CONCURRENCY,
+        ),
+    ]
+    trial_concurrency: Annotated[
+        int,
+        Field(
+            description="The maximum number of trials to run concurrently.",
+            default=1,
         ),
     ]
     seed: Annotated[
@@ -563,6 +577,18 @@ class TextRunConfig(BaseRunConfig):
         Field(
             description="Text streaming configuration",
             default=None,
+        ),
+    ]
+    assistant_solo_mode: Annotated[
+        bool,
+        Field(
+            description=(
+                "If True, run a one-shot assistant simulation: seed with a single user "
+                "message (ticket + instructions), no LLM user simulator, and stop when "
+                "the assistant emits a non-tool message. Incompatible with llm_agent_solo "
+                "(orchestrator solo_mode)."
+            ),
+            default=False,
         ),
     ]
 

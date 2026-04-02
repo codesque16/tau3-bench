@@ -10,7 +10,7 @@ from tau2.data_model.message import Message, SystemMessage, Tick, UserMessage
 from tau2.data_model.simulation import NLAssertionCheck, RewardInfo
 from tau2.data_model.tasks import RewardType, Task
 from tau2.evaluator.evaluator_base import EvaluatorBase
-from tau2.utils.llm_utils import generate
+from tau2.utils.llm_utils import extract_json_from_llm_response, generate
 
 
 class NLAssertionsEvaluator(EvaluatorBase[Message]):
@@ -55,6 +55,14 @@ class NLAssertionsEvaluator(EvaluatorBase[Message]):
             reward=reward,
             nl_assertions=nl_assertions_checks,
             reward_breakdown={RewardType.NL_ASSERTION: reward},
+            info={
+                "summary": {
+                    "total": len(nl_assertions_checks),
+                    "passed": sum(1 for x in nl_assertions_checks if x.met),
+                    "failed": sum(1 for x in nl_assertions_checks if not x.met),
+                },
+                "checks": [x.model_dump(mode="json") for x in nl_assertions_checks],
+            },
         )
 
     @classmethod
@@ -122,9 +130,12 @@ class NLAssertionsEvaluator(EvaluatorBase[Message]):
             model=DEFAULT_LLM_NL_ASSERTIONS,
             messages=messages,
             call_name="nl_assertions_eval",
+            use_genai_sdk=True,
             **DEFAULT_LLM_NL_ASSERTIONS_ARGS,
         )
-        result_data = json.loads(assistant_message.content)
+        raw_content = assistant_message.content or ""
+        json_str = extract_json_from_llm_response(raw_content)
+        result_data = json.loads(json_str)
         return [
             NLAssertionCheck(
                 nl_assertion=result["expectedOutcome"],
@@ -227,6 +238,14 @@ class FullDuplexNLAssertionsEvaluator(EvaluatorBase[Tick]):
             reward=reward,
             nl_assertions=nl_assertions_checks,
             reward_breakdown={RewardType.NL_ASSERTION: reward},
+            info={
+                "summary": {
+                    "total": len(nl_assertions_checks),
+                    "passed": sum(1 for x in nl_assertions_checks if x.met),
+                    "failed": sum(1 for x in nl_assertions_checks if not x.met),
+                },
+                "checks": [x.model_dump(mode="json") for x in nl_assertions_checks],
+            },
         )
 
     @classmethod

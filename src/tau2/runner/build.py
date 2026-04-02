@@ -27,6 +27,7 @@ from tau2.environment.environment import Environment
 from tau2.orchestrator.full_duplex_orchestrator import FullDuplexOrchestrator
 from tau2.orchestrator.orchestrator import Orchestrator
 from tau2.registry import registry
+from tau2.domains.retail.utils import RETAIL_POLICY_SOLO_PATH
 from tau2.user.user_simulator import DummyUser, UserSimulator
 from tau2.user.user_simulator_base import FullDuplexUser, HalfDuplexUser
 from tau2.user_simulation_voice_presets import (
@@ -134,6 +135,7 @@ def build_user(
     llm_args: Optional[dict] = None,
     persona_config: Optional[PersonaConfig] = None,
     solo_mode: bool = False,
+    assistant_solo_mode: bool = False,
 ) -> HalfDuplexUser:
     """Build a half-duplex user from a registered name.
 
@@ -147,6 +149,7 @@ def build_user(
         llm_args: LLM arguments for the user simulator.
         persona_config: Persona configuration (verbosity, interrupt tendency).
         solo_mode: If True, validates that DummyUser is used appropriately.
+        assistant_solo_mode: If True, allows DummyUser with one-shot assistant runs.
 
     Returns:
         A fully constructed half-duplex user instance.
@@ -163,7 +166,11 @@ def build_user(
 
     # Validate DummyUser usage
     if issubclass(UserConstructor, DummyUser):
-        assert solo_mode, "Dummy user can only be used with solo agent"
+        assert solo_mode or assistant_solo_mode, (
+            "Dummy user can only be used with solo agent or assistant_solo_mode"
+        )
+        # DummyUser takes no constructor args (unlike UserSimulator).
+        return UserConstructor()
 
     user_kwargs = {
         "tools": user_tools,
@@ -358,8 +365,17 @@ def build_text_orchestrator(
     solo_mode = registry.get_agent_metadata(
         config.effective_agent, "solo_mode", default=False
     )
+    assistant_solo_mode = bool(getattr(config, "assistant_solo_mode", False))
+    if assistant_solo_mode and solo_mode:
+        raise ValueError(
+            "assistant_solo_mode cannot be used with an agent registered as solo_mode "
+            "(e.g. llm_agent_solo)."
+        )
     domain = config.domain
     env_kwargs = _build_env_kwargs(config, task)
+    if assistant_solo_mode and domain == "retail":
+        env_kwargs = dict(env_kwargs)
+        env_kwargs["policy_path"] = RETAIL_POLICY_SOLO_PATH
 
     environment = build_environment(domain, solo_mode=solo_mode, env_kwargs=env_kwargs)
 
@@ -372,14 +388,19 @@ def build_text_orchestrator(
         solo_mode=solo_mode,
     )
 
+    effective_user = (
+        "dummy_user" if assistant_solo_mode else config.effective_user
+    )
+
     user = build_user(
-        config.effective_user,
+        effective_user,
         environment,
         task,
         llm=config.llm_user,
         llm_args=config.llm_args_user,
         persona_config=user_persona_config,
         solo_mode=solo_mode,
+        assistant_solo_mode=assistant_solo_mode,
     )
 
     orchestrator = Orchestrator(
@@ -392,6 +413,7 @@ def build_text_orchestrator(
         max_errors=config.max_errors,
         seed=seed,
         solo_mode=solo_mode,
+        assistant_solo_mode=assistant_solo_mode,
         simulation_id=simulation_id,
         validate_communication=config.enforce_communication_protocol,
         timeout=config.timeout,
@@ -399,7 +421,7 @@ def build_text_orchestrator(
 
     logger.debug(
         f"Built text orchestrator: domain={domain}, agent={config.effective_agent}, "
-        f"user={config.effective_user}, task={task.id}"
+        f"user={effective_user}, task={task.id}, assistant_solo_mode={assistant_solo_mode}"
     )
 
     return orchestrator
