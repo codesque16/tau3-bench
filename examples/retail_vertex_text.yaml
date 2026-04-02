@@ -1,0 +1,135 @@
+# Optional: select which runs to execute from this file.
+# Use "retail_assistant_solo" for one-shot assistant (ticket in first user turn, policy_solo.md).
+enabled_run_ids: ["retail_full_high_reasoning", "retail_assistant_solo_high_reasoning"]
+
+runs:
+  retail_full_high_reasoning:
+    domain: retail
+    num_trials: 4
+    trial_concurrency: 4
+    max_concurrency: 10
+    verbose_logs: true
+    seed: 626729
+    # If task_ids is omitted, tau2 runs all task ids for the split.
+    save_to: retail_full
+    fresh: true
+    agent: vertex_agent
+    agent_llm: gemini-3.1-flash-lite-preview
+    agent_llm_args:
+      temperature: 0
+      reasoning_level: high
+    agent_pricing:
+      input_cost_per_million: 0.25
+      cached_input_cost_per_million: 0.03
+      output_cost_per_million: 1.50
+    user: vertex_user_simulator
+    user_llm: gemini-3.1-pro-preview
+    user_llm_args:
+      temperature: 0.3
+    user_pricing:
+      input_cost_per_million: 2.00
+      cached_input_cost_per_million: 0.20
+      output_cost_per_million: 12.00
+
+  # One-shot assistant: no LLM user simulator; first message is ticket + instructions;
+  # run stops when the assistant sends a non-tool reply. Uses data/tau2/domains/retail/policy_solo.md.
+  retail_assistant_solo_high_reasoning:
+    domain: retail
+    assistant_solo_mode: true
+    num_trials: 4
+    trial_concurrency: 4
+    max_concurrency: 10
+    verbose_logs: true
+    seed: 5687955
+    save_to: retail_assistant_solo
+    fresh: true
+    agent: vertex_agent
+    agent_llm: gemini-3.1-flash-lite-preview
+    agent_llm_args:
+      temperature: 0
+      reasoning_level: high
+    agent_pricing:
+      input_cost_per_million: 0.25
+      cached_input_cost_per_million: 0.03
+      output_cost_per_million: 1.50
+    # user is ignored; build forces dummy_user.
+
+  retail_full:
+    domain: retail
+    num_trials: 4
+    trial_concurrency: 4
+    max_concurrency: 10
+    verbose_logs: true
+    seed: 626729
+    # If task_ids is omitted, tau2 runs all task ids for the split.
+    save_to: retail_full
+    fresh: true
+    agent: vertex_agent
+    agent_llm: gemini-3.1-flash-lite-preview
+    agent_llm_args:
+      temperature: 0
+      reasoning_level: low
+    agent_pricing:
+      input_cost_per_million: 0.25
+      cached_input_cost_per_million: 0.03
+      output_cost_per_million: 1.50
+    user: vertex_user_simulator
+    user_llm: gemini-3.1-pro-preview
+    user_llm_args:
+      temperature: 0.3
+    user_pricing:
+      input_cost_per_million: 2.00
+      cached_input_cost_per_million: 0.20
+      output_cost_per_million: 12.00
+
+  # One-shot assistant: no LLM user simulator; first message is ticket + instructions;
+  # run stops when the assistant sends a non-tool reply. Uses data/tau2/domains/retail/policy_solo.md.
+  retail_assistant_solo:
+    domain: retail
+    assistant_solo_mode: true
+    num_trials: 4
+    trial_concurrency: 4
+    max_concurrency: 10
+    verbose_logs: true
+    seed: 5687955
+    save_to: retail_assistant_solo
+    fresh: true
+    agent: vertex_agent
+    agent_llm: gemini-3.1-flash-lite-preview
+    agent_llm_args:
+      temperature: 0
+      reasoning_level: low
+    agent_pricing:
+      input_cost_per_million: 0.25
+      cached_input_cost_per_million: 0.03
+      output_cost_per_million: 1.50
+    # user is ignored; build forces dummy_user.
+
+  retail_subset:
+    domain: retail
+    num_trials: 4
+    trial_concurrency: 4
+    max_concurrency: 20
+    verbose_logs: true
+    seed: 626729
+    # If task_ids is omitted, tau2 runs all task ids for the split.
+    save_to: retail_subset
+    task_ids: ["0", "1", "2", "3", "4"]
+    fresh: true
+    agent: vertex_agent
+    agent_llm: gemini-3.1-flash-lite-preview
+    agent_llm_args:
+      temperature: 0
+      reasoning_level: low
+    agent_pricing:
+      input_cost_per_million: 0.25
+      cached_input_cost_per_million: 0.03
+      output_cost_per_million: 1.50
+    user: vertex_user_simulator
+    user_llm: gemini-3.1-pro-preview
+    user_llm_args:
+      temperature: 0.3
+    user_pricing:
+      input_cost_per_million: 2.00
+      cached_input_cost_per_million: 0.20
+      output_cost_per_million: 12.00

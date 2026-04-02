@@ -33,6 +33,7 @@ dependencies = [
     "requests>=2.31.0",
     "numpy>=1.24.0",
     "httpx>=0.24.0",
+    "logfire>=4.31.0",
 ]
 
 [project.optional-dependencies]
@@ -79,6 +80,7 @@ Repository = "https://github.com/sierra-research/tau2-bench"
 
 [project.scripts]
 tau2 = "tau2.cli:main"
+tau2config = "tau2.config_cli:main"
 
 [tool.pytest.ini_options]
 filterwarnings = [

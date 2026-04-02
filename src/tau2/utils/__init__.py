@@ -1,6 +1,7 @@
 from .io_utils import dump_file, load_file
 from .pydantic_utils import get_pydantic_hash, update_pydantic_model_with_dict
 from .utils import DATA_DIR, get_dict_hash, show_dict_diff
+from .genai_logfire import genai_generate_with_logfire
 
 __all__ = [
     "dump_file",
@@ -10,4 +11,5 @@ __all__ = [
     "DATA_DIR",
     "get_dict_hash",
     "show_dict_diff",
+    "genai_generate_with_logfire",
 ]
