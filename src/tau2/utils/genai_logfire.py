@@ -606,5 +606,25 @@ def genai_generate_with_logfire(
                 tool_round=tool_round,
                 gemini_io_json=gemini_io_json,
             )
-        logger.info(f"[{actor}] {call_name}: success")
-        return response
+
+    # After the span closes: disk I/O must not run inside ``with span_cm`` or Logfire
+    # shows the LLM span as "ongoing" for the full JSON-serialize + write duration.
+    if actor in ("agent", "user"):
+        try:
+            from tau2.utils.sim_llm_io import write_sim_llm_io_json
+
+            write_sim_llm_io_json(
+                actor,
+                call_name=call_name,
+                payload={
+                    "format": "google_genai",
+                    "model": model,
+                    "tool_round": tool_round,
+                    "gemini_io_json": gemini_io_json,
+                },
+            )
+        except Exception:
+            pass
+
+    logger.info(f"[{actor}] {call_name}: success")
+    return response

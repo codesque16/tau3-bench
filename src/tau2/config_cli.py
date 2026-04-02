@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import yaml
+from dotenv import load_dotenv
 
 from tau2.config import (
     DEFAULT_AUDIO_NATIVE_MODELS,
@@ -22,6 +24,7 @@ from tau2.config import (
     DEFAULT_PCM_SAMPLE_RATE,
     DEFAULT_RETRY_ATTEMPTS,
     DEFAULT_RETRY_MIN_WAIT,
+    DEFAULT_RUN_CONCURRENCY,
     DEFAULT_SEED,
     DEFAULT_SILENCE_ANNOTATION_THRESHOLD_SECONDS,
     DEFAULT_TELEPHONY_RATE,
@@ -66,6 +69,52 @@ def _merge_dicts(base: dict[str, Any], override: dict[str, Any]) -> dict[str, An
         else:
             merged[key] = value
     return merged
+
+
+def _runs_map_from_entries(
+    run_entries: list[tuple[str, dict[str, Any]]],
+) -> dict[str, dict[str, Any]]:
+    """Build run_id -> raw run mapping. Duplicate keys would silently overwrite."""
+    return {run_id: dict(run_cfg) for run_id, run_cfg in run_entries}
+
+
+def _resolve_run_with_base_inheritance(
+    run_id: str,
+    run_cfg: dict[str, Any],
+    all_runs: dict[str, dict[str, Any]],
+    visiting: frozenset[str],
+) -> dict[str, Any]:
+    """Apply ``base_run`` chain: merge resolved parent, then this run's overrides (deep).
+
+    ``base_run`` must name another key under ``runs``. Cycles are rejected.
+    The special key ``base_run`` is never passed to :func:`_build_run_config`.
+    """
+    if run_id in visiting:
+        raise ValueError(
+            f"base_run cycle: run '{run_id}' appears twice in the inheritance chain"
+        )
+
+    base_ref = run_cfg.get("base_run")
+    if base_ref is None:
+        out = dict(run_cfg)
+        out.pop("base_run", None)
+        return out
+
+    base_id = str(base_ref)
+    if base_id not in all_runs:
+        raise ValueError(
+            f"Run '{run_id}' references unknown base_run '{base_id}'. "
+            f"Available runs: {sorted(all_runs.keys())}"
+        )
+
+    base_resolved = _resolve_run_with_base_inheritance(
+        base_id,
+        all_runs[base_id],
+        all_runs,
+        visiting | {run_id},
+    )
+    override = {k: v for k, v in run_cfg.items() if k != "base_run"}
+    return _merge_dicts(base_resolved, override)
 
 
 def _split_root_and_runs(cfg: dict[str, Any]) -> tuple[dict[str, Any], list[tuple[str, dict[str, Any]]]]:
@@ -206,6 +255,7 @@ def _build_run_config(cfg: dict[str, Any]) -> TextRunConfig | VoiceRunConfig:
         hallucination_retries=cfg.get("hallucination_retries", 3),
         retrieval_config=cfg.get("retrieval_config"),
         retrieval_config_kwargs=cfg.get("retrieval_config_kwargs"),
+        fresh=bool(cfg.get("fresh", False)),
     )
 
     mode = cfg.get("mode")
@@ -254,6 +304,47 @@ def _apply_fresh_save_to(cfg: dict[str, Any]) -> None:
     cfg["save_to"] = f"{base_name}_{stamp}"
 
 
+def _effective_run_concurrency(cfg: dict[str, Any], cli_override: int | None) -> int:
+    """Root-level YAML ``run_concurrency`` or CLI ``--run-concurrency``; minimum 1."""
+    if cli_override is not None:
+        return max(1, int(cli_override))
+    raw = cfg.get("run_concurrency", DEFAULT_RUN_CONCURRENCY)
+    try:
+        return max(1, int(raw))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _prepare_merged_cfg_for_run(
+    run_id: str,
+    run_cfg: dict[str, Any],
+    all_runs: dict[str, dict[str, Any]],
+    root_defaults: dict[str, Any],
+    cfg_path: Path,
+) -> dict[str, Any]:
+    resolved_run = _resolve_run_with_base_inheritance(
+        run_id, run_cfg, all_runs, frozenset()
+    )
+    merged_cfg = _merge_dicts(root_defaults, resolved_run)
+    merged_cfg.pop("enabled_run_ids", None)
+    merged_cfg.pop("enabled", None)
+    merged_cfg.pop("id", None)
+    merged_cfg.pop("base_run", None)
+    merged_cfg.pop("run_concurrency", None)
+    if run_id != "default":
+        merged_cfg["config_name"] = run_id
+    else:
+        merged_cfg.setdefault("config_name", cfg_path.stem)
+    _apply_fresh_save_to(merged_cfg)
+    return merged_cfg
+
+
+def _execute_yaml_run(run_id: str, merged_cfg: dict[str, Any]) -> None:
+    run_config = _build_run_config(merged_cfg)
+    print(f"[tau2config] Running '{run_id}'...")
+    run_domain(run_config)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run tau2 from YAML config")
     parser.add_argument(
@@ -269,24 +360,52 @@ def main() -> None:
         type=str,
         help="Path to YAML config file",
     )
+    parser.add_argument(
+        "--run-concurrency",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Override YAML root run_concurrency: how many top-level runs from this file "
+            f"may execute in parallel (default {DEFAULT_RUN_CONCURRENCY} or run_concurrency in YAML)."
+        ),
+    )
     args = parser.parse_args()
 
     cfg_path = Path(args.config).expanduser().resolve()
+    # Default cwd search + .env next to the config file (import chain also loads .env via tau2.utils.utils).
+    load_dotenv()
+    load_dotenv(cfg_path.parent / ".env")
+
     cfg = _load_yaml_config(cfg_path)
     root_defaults, run_entries = _split_root_and_runs(cfg)
+    all_runs = _runs_map_from_entries(run_entries)
     selected_runs = _select_runs(cfg, run_entries, args.run_ids)
 
-    for run_id, run_cfg in selected_runs:
-        merged_cfg = _merge_dicts(root_defaults, run_cfg)
-        # These are control keys for selection, not run config keys.
-        merged_cfg.pop("enabled_run_ids", None)
-        merged_cfg.pop("enabled", None)
-        merged_cfg.pop("id", None)
-        merged_cfg.setdefault("config_name", cfg_path.stem)
-        _apply_fresh_save_to(merged_cfg)
-        run_config = _build_run_config(merged_cfg)
-        print(f"[tau2config] Running '{run_id}'...")
-        run_domain(run_config)
+    prepared: list[tuple[str, dict[str, Any]]] = [
+        (
+            run_id,
+            _prepare_merged_cfg_for_run(
+                run_id, run_cfg, all_runs, root_defaults, cfg_path
+            ),
+        )
+        for run_id, run_cfg in selected_runs
+    ]
+
+    run_concurrency = _effective_run_concurrency(cfg, args.run_concurrency)
+
+    if run_concurrency <= 1 or len(prepared) <= 1:
+        for run_id, merged_cfg in prepared:
+            _execute_yaml_run(run_id, merged_cfg)
+    else:
+        workers = min(run_concurrency, len(prepared))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {
+                pool.submit(_execute_yaml_run, run_id, merged_cfg): run_id
+                for run_id, merged_cfg in prepared
+            }
+            for fut in as_completed(futures):
+                fut.result()
 
 
 if __name__ == "__main__":

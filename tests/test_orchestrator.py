@@ -5,12 +5,19 @@ import pytest
 
 from tau2.agent.llm_agent import LLMAgent, LLMSoloAgent
 from tau2.data_model.message import AssistantMessage, UserMessage
-from tau2.data_model.tasks import EnvAssertion, InitialState, Task
+from tau2.data_model.tasks import (
+    EnvAssertion,
+    InitialState,
+    StructuredUserInstructions,
+    Task,
+    UserScenario,
+)
 from tau2.environment.environment import Environment
 from tau2.orchestrator.orchestrator import (
     DEFAULT_FIRST_AGENT_MESSAGE,
     Orchestrator,
     Role,
+    _assistant_solo_first_user_message,
 )
 from tau2.user.user_simulator import DummyUser, UserSimulator
 
@@ -507,3 +514,43 @@ def test_validate_communication_allows_valid_messages(
     # Should initialize successfully with valid message
     assert orchestrator.done is False
     assert orchestrator.termination_reason is None
+
+
+def test_assistant_solo_first_user_message_uses_reason_and_known_only():
+    task = Task(
+        id="t",
+        user_scenario=UserScenario(
+            instructions=StructuredUserInstructions(
+                domain="retail",
+                reason_for_call="Exchange items",
+                known_info="You are Pat in zip 12345.",
+                unknown_info="You forgot email",
+                task_instructions="USER SIM ONLY: be verbose and ask many questions",
+            ),
+        ),
+    )
+    msg = _assistant_solo_first_user_message(task)
+    body = msg.content or ""
+    assert "Exchange items" in body
+    assert "Pat" in body
+    assert "USER SIM ONLY" not in body
+    assert "forgot email" not in body
+
+
+def test_assistant_solo_first_user_message_respects_task_ticket_override():
+    task = Task(
+        id="t",
+        ticket="Custom ticket body",
+        user_scenario=UserScenario(
+            instructions=StructuredUserInstructions(
+                domain="retail",
+                reason_for_call="Ignored when ticket set",
+                known_info="Also ignored",
+                task_instructions="x",
+            ),
+        ),
+    )
+    msg = _assistant_solo_first_user_message(task)
+    body = msg.content or ""
+    assert "Custom ticket body" in body
+    assert "Ignored when ticket set" not in body

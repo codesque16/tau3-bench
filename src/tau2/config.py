@@ -3,6 +3,8 @@ DEFAULT_MAX_STEPS = 200
 DEFAULT_MAX_ERRORS = 10
 DEFAULT_SEED = 300
 DEFAULT_MAX_CONCURRENCY = 3
+# tau2.config_cli only: max parallel top-level YAML runs (each run still uses trial_concurrency internally).
+DEFAULT_RUN_CONCURRENCY = 1
 DEFAULT_NUM_TRIALS = 1
 DEFAULT_SAVE_TO = None
 DEFAULT_LOG_LEVEL = "ERROR"

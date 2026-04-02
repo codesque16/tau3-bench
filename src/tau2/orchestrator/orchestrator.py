@@ -25,7 +25,12 @@ from tau2.data_model.message import (
     UserMessage,
 )
 from tau2.data_model.simulation import SimulationRun, TerminationReason
-from tau2.data_model.tasks import EnvFunctionCall, InitializationData, Task
+from tau2.data_model.tasks import (
+    EnvFunctionCall,
+    InitializationData,
+    StructuredUserInstructions,
+    Task,
+)
 from tau2.environment.environment import Environment, EnvironmentInfo
 from tau2.orchestrator.modes import CommunicationMode
 from tau2.user.user_simulator import DummyUser, UserSimulator, UserState
@@ -49,9 +54,23 @@ DEFAULT_FIRST_AGENT_MESSAGE = AssistantMessage(
 )
 
 
+def _assistant_solo_ticket_body(task: Task) -> str:
+    """Text that mimics the customer's first message (not user-simulator meta-instructions)."""
+    if task.ticket and str(task.ticket).strip():
+        return str(task.ticket).strip()
+    instr = task.user_scenario.instructions
+    if isinstance(instr, StructuredUserInstructions):
+        parts = [f"Reason for call:\n{instr.reason_for_call.strip()}"]
+        if instr.known_info is not None and str(instr.known_info).strip():
+            parts.append(f"Known info:\n{instr.known_info.strip()}")
+        return "\n\n".join(parts)
+    # Legacy: plain-string instructions
+    return str(instr).strip()
+
+
 def _assistant_solo_first_user_message(task: Task) -> UserMessage:
-    """First user turn for assistant-only one-shot runs: ticket + completion instructions."""
-    ticket = str(task.user_scenario)
+    """First user turn for assistant-only one-shot runs: slim ticket + completion instructions."""
+    ticket = _assistant_solo_ticket_body(task)
     content = (
         f"{ticket}\n\n"
         "Resolve this ticket completely using the tools as needed. When you are done, "
@@ -398,8 +417,9 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
 
         Assistant solo mode (assistant_solo_mode):
             One-shot assistant run: no LLM user simulator; the first turn is a user message
-            (ticket + instructions). The run ends when the assistant sends a text-only message
-            with no tool calls (termination AGENT_STOP for evaluation).
+            built from ``task.ticket`` if set, else structured ``reason_for_call`` and
+            ``known_info`` only (not user-simulator ``task_instructions``). The run ends when
+            the assistant sends a text-only message with no tool calls (AGENT_STOP).
 
         Termination:
             Simulation ends when:
@@ -445,9 +465,9 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
             solo_mode: If True, agent operates without user interaction (only tool calls allowed).
                       Requires agent to be LLMSoloAgent or GymAgent, and user to be DummyUser.
                       Defaults to False.
-            assistant_solo_mode: If True, seed with one user message (ticket + instructions), use
-                      DummyUser for routing, and stop when the assistant sends a non-tool message.
-                      Mutually exclusive with solo_mode. Defaults to False.
+            assistant_solo_mode: If True, seed with one user message (slim ticket + completion
+                      prompt), use DummyUser for routing, and stop when the assistant sends a
+                      non-tool message. Mutually exclusive with solo_mode. Defaults to False.
             validate_communication: If True, validates communication protocol rules (e.g., no mixed
                                    messages with both text and tool calls). Defaults to False.
             timeout: Maximum wallclock time in seconds. None means no timeout.

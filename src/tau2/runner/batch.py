@@ -62,6 +62,7 @@ from tau2.user.user_simulator import (
 from tau2.user_simulation_voice_presets import COMPLEXITY_CONFIGS
 from tau2.utils.display import ConsoleDisplay, Text
 from tau2.utils.llm_utils import llm_log_mode, set_llm_log_dir, set_llm_log_mode
+from tau2.utils.sim_llm_io import set_sim_llm_io_root
 from tau2.utils.utils import DATA_DIR
 
 # Context variable to track current simulation_id for log filtering
@@ -286,9 +287,13 @@ class _TaskLogContext:
                 / f"task_{self.task.id}"
                 / f"sim_{self.simulation_id}"
             )
+            self.task_log_dir.mkdir(parents=True, exist_ok=True)
+            (self.task_log_dir / "agent").mkdir(exist_ok=True)
+            (self.task_log_dir / "user").mkdir(exist_ok=True)
+            set_sim_llm_io_root(self.task_log_dir)
 
         if self.verbose_logs and self.task_log_dir:
-            self.task_log_dir.mkdir(parents=True, exist_ok=True)
+            # self.task_log_dir.mkdir(parents=True, exist_ok=True)
             _current_simulation_id.set(self.simulation_id)
 
             def make_simulation_filter(sim_id: str):
@@ -331,6 +336,7 @@ class _TaskLogContext:
 
         if self.save_dir:
             set_llm_log_dir(None)
+            # set_sim_llm_io_root(None)
         if self._handler_id is not None:
             logger.remove(self._handler_id)
             _current_simulation_id.set(None)

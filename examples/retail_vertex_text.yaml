@@ -1,68 +1,46 @@
 # Optional: select which runs to execute from this file.
+# Runs may set `base_run: <another_run_id>` to inherit that template and override/add keys (deep merge).
+# Chains are supported (base_run pointing to a run that also has base_run). Cycles are rejected.
 # Use "retail_assistant_solo" for one-shot assistant (ticket in first user turn, policy_solo.md).
-enabled_run_ids: ["retail_full_high_reasoning", "retail_assistant_solo_high_reasoning"]
+# Optional root key: run_concurrency: N — run up to N selected YAML runs in parallel (default 1). Override: --run-concurrency N.
+
+run_concurrency: 6
+# enabled_run_ids:
+#  - "retail_conv_full_g31fl_low_reasoning_0"
+#  - "retail_conv_full_g31fl_medium_reasoning_0"
+#  - "retail_conv_full_g31fl_high_reasoning_0"
+#  - "retail_solo_full_g31fl_low_reasoning_0"
+#  - "retail_solo_full_g31fl_medium_reasoning_0"
+#  - "retail_solo_full_g31fl_high_reasoning_0"
+#  - "retail_conv_full_g31fl_low_reasoning_0_3"
+#  - "retail_conv_full_g31fl_medium_reasoning_0_3"
+#  - "retail_conv_full_g31fl_high_reasoning_0_3"
+#  - "retail_solo_full_g31fl_low_reasoning_0_3"
+#  - "retail_solo_full_g31fl_medium_reasoning_0_3"
+#  - "retail_solo_full_g31fl_high_reasoning_0_3"
+#  - "retail_conv_full_g31p_low_reasoning_0"
+#  - "retail_conv_full_g31p_medium_reasoning_0"
+#  - "retail_conv_full_g31p_high_reasoning_0"
+#  - "retail_solo_full_g31p_low_reasoning_0"
+#  - "retail_solo_full_g31p_medium_reasoning_0"
+#  - "retail_solo_full_g31p_high_reasoning_0"
+#  - "retail_conv_full_g31p_low_reasoning_0_3"
+#  - "retail_conv_full_g31p_medium_reasoning_0_3"
+#  - "retail_conv_full_g31p_high_reasoning_0_3"
+#  - "retail_solo_full_g31p_low_reasoning_0_3"
+#  - "retail_solo_full_g31p_medium_reasoning_0_3"
+#  - "retail_solo_full_g31p_high_reasoning_0_3"
 
 runs:
-  retail_full_high_reasoning:
+  # --- Conversation (user simulator) templates ---
+  retail_conv_full_g31fl_low_reasoning_0:
     domain: retail
     num_trials: 4
     trial_concurrency: 4
     max_concurrency: 10
     verbose_logs: true
     seed: 626729
-    # If task_ids is omitted, tau2 runs all task ids for the split.
-    save_to: retail_full
-    fresh: true
-    agent: vertex_agent
-    agent_llm: gemini-3.1-flash-lite-preview
-    agent_llm_args:
-      temperature: 0
-      reasoning_level: high
-    agent_pricing:
-      input_cost_per_million: 0.25
-      cached_input_cost_per_million: 0.03
-      output_cost_per_million: 1.50
-    user: vertex_user_simulator
-    user_llm: gemini-3.1-pro-preview
-    user_llm_args:
-      temperature: 0.3
-    user_pricing:
-      input_cost_per_million: 2.00
-      cached_input_cost_per_million: 0.20
-      output_cost_per_million: 12.00
-
-  # One-shot assistant: no LLM user simulator; first message is ticket + instructions;
-  # run stops when the assistant sends a non-tool reply. Uses data/tau2/domains/retail/policy_solo.md.
-  retail_assistant_solo_high_reasoning:
-    domain: retail
-    assistant_solo_mode: true
-    num_trials: 4
-    trial_concurrency: 4
-    max_concurrency: 10
-    verbose_logs: true
-    seed: 5687955
-    save_to: retail_assistant_solo
-    fresh: true
-    agent: vertex_agent
-    agent_llm: gemini-3.1-flash-lite-preview
-    agent_llm_args:
-      temperature: 0
-      reasoning_level: high
-    agent_pricing:
-      input_cost_per_million: 0.25
-      cached_input_cost_per_million: 0.03
-      output_cost_per_million: 1.50
-    # user is ignored; build forces dummy_user.
-
-  retail_full:
-    domain: retail
-    num_trials: 4
-    trial_concurrency: 4
-    max_concurrency: 10
-    verbose_logs: true
-    seed: 626729
-    # If task_ids is omitted, tau2 runs all task ids for the split.
-    save_to: retail_full
+    save_to: retail_conv_full_g31fl_low_reasoning_0
     fresh: true
     agent: vertex_agent
     agent_llm: gemini-3.1-flash-lite-preview
@@ -82,39 +60,57 @@ runs:
       cached_input_cost_per_million: 0.20
       output_cost_per_million: 12.00
 
-  # One-shot assistant: no LLM user simulator; first message is ticket + instructions;
-  # run stops when the assistant sends a non-tool reply. Uses data/tau2/domains/retail/policy_solo.md.
-  retail_assistant_solo:
-    domain: retail
-    assistant_solo_mode: true
-    num_trials: 4
-    trial_concurrency: 4
-    max_concurrency: 10
-    verbose_logs: true
-    seed: 5687955
-    save_to: retail_assistant_solo
-    fresh: true
-    agent: vertex_agent
-    agent_llm: gemini-3.1-flash-lite-preview
+  retail_conv_full_g31fl_low_reasoning_0_3:
+    base_run: retail_conv_full_g31fl_low_reasoning_0
+    save_to: retail_conv_full_g31fl_low_reasoning_0_3
+    seed: 312312312
     agent_llm_args:
-      temperature: 0
-      reasoning_level: low
-    agent_pricing:
-      input_cost_per_million: 0.25
-      cached_input_cost_per_million: 0.03
-      output_cost_per_million: 1.50
-    # user is ignored; build forces dummy_user.
+      temperature: 0.3
+
+  retail_conv_full_g31fl_medium_reasoning_0:
+    base_run: retail_conv_full_g31fl_low_reasoning_0
+    save_to: retail_conv_full_g31fl_medium_reasoning_0
+    seed: 8790456342
+    agent_llm_args:
+      reasoning_level: medium
+
+  retail_conv_full_g31fl_medium_reasoning_0_3:
+    base_run: retail_conv_full_g31fl_medium_reasoning_0
+    save_to: retail_conv_full_g31fl_medium_reasoning_0_3
+    seed: 5348087
+    agent_llm_args:
+      temperature: 0.3
+
+  retail_conv_full_g31fl_high_reasoning_0:
+    base_run: retail_conv_full_g31fl_low_reasoning_0
+    save_to: retail_conv_full_g31fl_high_reasoning_0
+    seed: 7575677567
+    agent_llm_args:
+      reasoning_level: high
+
+  retail_conv_full_g31fl_high_reasoning_0_3:
+    base_run: retail_conv_full_g31fl_high_reasoning_0
+    save_to: retail_conv_full_g31fl_high_reasoning_0_3
+    seed: 656345634
+    agent_llm_args:
+      temperature: 0.3
 
   retail_subset:
-    domain: retail
-    num_trials: 4
-    trial_concurrency: 4
+    base_run: retail_conv_full_g31fl_low_reasoning_0
     max_concurrency: 20
-    verbose_logs: true
-    seed: 626729
-    # If task_ids is omitted, tau2 runs all task ids for the split.
     save_to: retail_subset
     task_ids: ["0", "1", "2", "3", "4"]
+
+  # --- Assistant solo (dummy user, policy_solo.md) ---
+  retail_solo_full_g31fl_low_reasoning_0:
+    domain: retail
+    assistant_solo_mode: true
+    num_trials: 4
+    trial_concurrency: 4
+    max_concurrency: 10
+    verbose_logs: true
+    seed: 2342342
+    save_to: retail_solo_full_g31fl_low_reasoning_0
     fresh: true
     agent: vertex_agent
     agent_llm: gemini-3.1-flash-lite-preview
@@ -125,11 +121,92 @@ runs:
       input_cost_per_million: 0.25
       cached_input_cost_per_million: 0.03
       output_cost_per_million: 1.50
-    user: vertex_user_simulator
-    user_llm: gemini-3.1-pro-preview
-    user_llm_args:
+
+  retail_solo_full_g31fl_medium_reasoning_0:
+    base_run: retail_solo_full_g31fl_low_reasoning_0
+    save_to: retail_solo_full_g31fl_medium_reasoning_0
+    seed: 567567567567
+    agent_llm_args:
+      reasoning_level: medium
+
+  retail_solo_full_g31fl_medium_reasoning_0_3:
+    base_run: retail_solo_full_g31fl_medium_reasoning_0
+    save_to: retail_solo_full_g31fl_medium_reasoning_0_3
+    seed: 23123546
+    agent_llm_args:
       temperature: 0.3
-    user_pricing:
-      input_cost_per_million: 2.00
-      cached_input_cost_per_million: 0.20
-      output_cost_per_million: 12.00
+
+  retail_solo_full_g31fl_high_reasoning_0:
+    base_run: retail_solo_full_g31fl_low_reasoning_0
+    save_to: retail_solo_full_g31fl_high_reasoning_0
+    seed: 45454534
+    agent_llm_args:
+      reasoning_level: high
+
+  retail_solo_full_g31fl_high_reasoning_0_3:
+    base_run: retail_solo_full_g31fl_high_reasoning_0
+    save_to: retail_solo_full_g31fl_high_reasoning_0_3
+    seed: 89898989
+    agent_llm_args:
+      temperature: 0.3
+
+  retail_conv_full_g31p_low_reasoning_0:
+    base_run: retail_conv_full_g31fl_low_reasoning_0
+    save_to: retail_conv_full_g31p_low_reasoning_0
+    agent_llm: gemini-3.1-pro-preview
+    seed: 123123123
+  retail_conv_full_g31p_medium_reasoning_0:
+    base_run: retail_conv_full_g31fl_medium_reasoning_0
+    save_to: retail_conv_full_g31p_medium_reasoning_0
+    agent_llm: gemini-3.1-pro-preview
+    seed: 456456456
+  retail_conv_full_g31p_high_reasoning_0:
+    base_run: retail_conv_full_g31fl_high_reasoning_0
+    save_to: retail_conv_full_g31p_high_reasoning_0
+    agent_llm: gemini-3.1-pro-preview
+    seed: 789789789
+  retail_solo_full_g31p_low_reasoning_0:
+    base_run: retail_solo_full_g31fl_low_reasoning_0
+    save_to: retail_solo_full_g31p_low_reasoning_0
+    agent_llm: gemini-3.1-pro-preview
+    seed: 101101101
+  retail_solo_full_g31p_medium_reasoning_0:
+    base_run: retail_solo_full_g31fl_medium_reasoning_0
+    save_to: retail_solo_full_g31p_medium_reasoning_0
+    agent_llm: gemini-3.1-pro-preview
+    seed: 121312131
+  retail_solo_full_g31p_high_reasoning_0:
+    base_run: retail_solo_full_g31fl_high_reasoning_0
+    save_to: retail_solo_full_g31p_high_reasoning_0
+    agent_llm: gemini-3.1-pro-preview
+    seed: 141514151
+  retail_conv_full_g31p_low_reasoning_0_3:
+    base_run: retail_conv_full_g31p_low_reasoning_0
+    save_to: retail_conv_full_g31p_low_reasoning_0_3
+    agent_llm: gemini-3.1-pro-preview
+    seed: 161716171
+  retail_conv_full_g31p_medium_reasoning_0_3:
+    base_run: retail_conv_full_g31p_medium_reasoning_0
+    save_to: retail_conv_full_g31p_medium_reasoning_0_3
+    agent_llm: gemini-3.1-pro-preview
+    seed: 181918191
+  retail_conv_full_g31p_high_reasoning_0_3:
+    base_run: retail_conv_full_g31p_high_reasoning_0
+    save_to: retail_conv_full_g31p_high_reasoning_0_3
+    agent_llm: gemini-3.1-pro-preview
+    seed: 202120212
+  retail_solo_full_g31p_low_reasoning_0_3:
+    base_run: retail_solo_full_g31p_low_reasoning_0
+    save_to: retail_solo_full_g31p_low_reasoning_0_3
+    agent_llm: gemini-3.1-pro-preview
+    seed: 222322232
+  retail_solo_full_g31p_medium_reasoning_0_3:
+    base_run: retail_solo_full_g31p_medium_reasoning_0
+    save_to: retail_solo_full_g31p_medium_reasoning_0_3
+    agent_llm: gemini-3.1-pro-preview
+    seed: 242524252
+  retail_solo_full_g31p_high_reasoning_0_3:
+    base_run: retail_solo_full_g31p_high_reasoning_0
+    save_to: retail_solo_full_g31p_high_reasoning_0_3
+    agent_llm: gemini-3.1-pro-preview
+    seed: 262726272

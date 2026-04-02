@@ -40,6 +40,11 @@ from tau2.data_model.message import (
 )
 from tau2.environment.tool import Tool
 from tau2.utils.genai_logfire import genai_generate_with_logfire
+from tau2.utils.sim_llm_io import (
+    infer_actor_from_call_name,
+    sim_llm_io_root,
+    write_sim_llm_io_json,
+)
 
 # Suppress Pydantic serialization warnings from LiteLLM
 # These occur due to type mismatches between streaming and non-streaming response types
@@ -290,6 +295,28 @@ def _format_messages_for_logging(messages: list[dict]) -> list[dict]:
     return formatted
 
 
+def _maybe_write_sim_llm_io_litellm(
+    call_name: Optional[str],
+    request_data: dict[str, Any],
+    response_data: dict[str, Any],
+) -> None:
+    """Mirror LiteLLM request/response to artifacts/.../sim_*/{agent,user}/ when configured."""
+    if sim_llm_io_root.get() is None:
+        return
+    actor = infer_actor_from_call_name(call_name)
+    if actor is None:
+        return
+    write_sim_llm_io_json(
+        actor,
+        call_name=call_name or "generate",
+        payload={
+            "format": "litellm",
+            "request": request_data,
+            "response": response_data,
+        },
+    )
+
+
 def _write_llm_log(
     request_data: dict, response_data: dict, call_name: Optional[str] = None
 ) -> None:
@@ -305,6 +332,8 @@ def _write_llm_log(
         call_name: Optional name identifying the purpose of this LLM call
                    (e.g., "detect_interrupt", "generate_agent_message")
     """
+    _maybe_write_sim_llm_io_litellm(call_name, request_data, response_data)
+
     log_dir = llm_log_dir.get()
 
     if log_dir is None:

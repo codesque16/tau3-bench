@@ -214,10 +214,26 @@ def build_run_id(config: RunConfig, *, policy_name: Optional[str] = None) -> str
     agent_model = config.effective_agent_model
     user_model = config.effective_user_model
     policy = policy_name or "policy"
-    config_name = getattr(config, "config_name", None)
-    if config_name:
-        return f"[{domain}][{policy}][{agent_model}][{user_model}][{config_name}]"
-    return f"[{domain}][{policy}][{agent_model}][{user_model}]"
+    base = f"[{domain}][{policy}][{agent_model}][{user_model}]"
+
+    label = getattr(config, "config_name", None)
+    label = label.strip() if isinstance(label, str) and label.strip() else None
+    save = (config.save_to or "").strip()
+    fresh = bool(getattr(config, "fresh", False))
+
+    if label:
+        if fresh and save:
+            tail = f"{label}|{Path(save).name}"
+        else:
+            tail = label
+    elif save:
+        tail = Path(save).name
+    else:
+        tail = None
+
+    if tail:
+        return f"{base}[{tail}]"
+    return base
 
 
 def infer_policy_name(config: RunConfig) -> str:

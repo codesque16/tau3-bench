@@ -363,8 +363,15 @@ class BaseRunConfig(BaseModel):
     config_name: Annotated[
         Optional[str],
         Field(
-            description="Optional YAML config name used to launch this run (for trace labeling).",
+            description="Optional run label for traces (e.g. YAML run id from tau2config, or file stem).",
             default=None,
+        ),
+    ]
+    fresh: Annotated[
+        bool,
+        Field(
+            description="True if launch used YAML fresh: true (save_to was timestamped). Used for Logfire run labels.",
+            default=False,
         ),
     ]
     max_concurrency: Annotated[
