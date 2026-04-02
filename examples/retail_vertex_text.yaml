@@ -122,6 +122,13 @@ runs:
       cached_input_cost_per_million: 0.03
       output_cost_per_million: 1.50
 
+  retail_solo_full_g31fl_low_reasoning_0_3:
+    base_run: retail_solo_full_g31fl_low_reasoning_0
+    save_to: retail_solo_full_g31fl_low_reasoning_0_3
+    seed: 312312312
+    agent_llm_args:
+      temperature: 0.3
+
   retail_solo_full_g31fl_medium_reasoning_0:
     base_run: retail_solo_full_g31fl_low_reasoning_0
     save_to: retail_solo_full_g31fl_medium_reasoning_0
