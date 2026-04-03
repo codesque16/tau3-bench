@@ -219,6 +219,10 @@ def assert_played_audio_length(
     result: TickResult, adapter: DiscreteTimeAdapter
 ) -> None:
     """Assert that get_played_agent_audio returns exactly bytes_per_tick."""
+    assert result.bytes_per_tick > 0, (
+        f"TickResult.bytes_per_tick is {result.bytes_per_tick} — "
+        "adapter.run_tick() returned a TickResult without setting bytes_per_tick"
+    )
     played = result.get_played_agent_audio()
     assert len(played) == adapter.bytes_per_tick, (
         f"get_played_agent_audio returned {len(played)} bytes, "
