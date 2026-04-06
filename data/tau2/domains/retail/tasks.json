@@ -77,7 +77,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "exchange_resolution",
+        "sub_category": "exchange | moderate",
+        "category_comments": "intent=exchange; expected_actions=5; write_actions=exchange; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "1",
@@ -155,7 +160,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "exchange_resolution",
+        "sub_category": "exchange | moderate",
+        "category_comments": "intent=exchange; expected_actions=5; write_actions=exchange; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "2",
@@ -284,7 +294,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "return_resolution",
+        "sub_category": "return | very_complex",
+        "category_comments": "intent=return; expected_actions=11; write_actions=return; aligned",
+        "complexity": "very_complex"
     },
     {
         "id": "3",
@@ -422,7 +437,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_items | very_complex",
+        "category_comments": "intent=modify; expected_actions=12; write_actions=modify_order_items; aligned",
+        "complexity": "very_complex"
     },
     {
         "id": "4",
@@ -585,7 +605,12 @@
                 "author_email": "keshav@sierra.ai",
                 "simulation_file": "task_issues/task_4_issue_2b74ee61.json"
             }
-        ]
+        ],
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_items | very_complex",
+        "category_comments": "intent=modify; expected_actions=13; write_actions=modify_order_items; aligned",
+        "complexity": "very_complex"
     },
     {
         "id": "5",
@@ -671,7 +696,12 @@
                 "author_email": "keshav@sierra.ai",
                 "simulation_file": "task_issues/task_5_issue_770466c1.json"
             }
-        ]
+        ],
+        "super_category": "order_resolution",
+        "category": "return_resolution",
+        "sub_category": "return | moderate",
+        "category_comments": "intent=exchange; expected_actions=5; write_actions=return; intent_action_mismatch(intent=exchange)",
+        "complexity": "moderate"
     },
     {
         "id": "6",
@@ -757,7 +787,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "exchange_resolution",
+        "sub_category": "exchange | moderate",
+        "category_comments": "intent=exchange; expected_actions=6; write_actions=exchange; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "7",
@@ -853,7 +888,12 @@
                 "author_email": "keshav@sierra.ai",
                 "simulation_file": "task_issues/task_7_issue_9a37c151.json"
             }
-        ]
+        ],
+        "super_category": "order_resolution",
+        "category": "exchange_resolution",
+        "sub_category": "exchange | moderate",
+        "category_comments": "intent=exchange; expected_actions=6; write_actions=exchange; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "8",
@@ -939,7 +979,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "exchange_resolution",
+        "sub_category": "exchange | moderate",
+        "category_comments": "intent=exchange; expected_actions=6; write_actions=exchange; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "9",
@@ -1025,7 +1070,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "exchange_resolution",
+        "sub_category": "exchange | moderate",
+        "category_comments": "intent=exchange; expected_actions=6; write_actions=exchange; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "10",
@@ -1095,7 +1145,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "escalation_or_exception_handling",
+        "category": "human_handoff_workflow",
+        "sub_category": "escalation | moderate",
+        "category_comments": "intent=return; expected_actions=5; write_actions=escalation; intent_action_mismatch(intent=return)",
+        "complexity": "moderate"
     },
     {
         "id": "11",
@@ -1183,7 +1238,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "return_resolution",
+        "sub_category": "return | moderate",
+        "category_comments": "intent=return; expected_actions=6; write_actions=return; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "12",
@@ -1253,7 +1313,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "escalation_or_exception_handling",
+        "category": "human_handoff_workflow",
+        "sub_category": "escalation | moderate",
+        "category_comments": "intent=return; expected_actions=5; write_actions=escalation; intent_action_mismatch(intent=return)",
+        "complexity": "moderate"
     },
     {
         "id": "13",
@@ -1328,7 +1393,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "return_resolution",
+        "sub_category": "return | moderate",
+        "category_comments": "intent=return; expected_actions=5; write_actions=return; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "14",
@@ -1413,7 +1483,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "return_resolution",
+        "sub_category": "return | moderate",
+        "category_comments": "intent=return; expected_actions=6; write_actions=return; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "15",
@@ -1507,7 +1582,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_items | complex",
+        "category_comments": "intent=modify; expected_actions=7; write_actions=modify_order_items; aligned",
+        "complexity": "complex"
     },
     {
         "id": "16",
@@ -1620,7 +1700,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "mixed_resolution",
+        "sub_category": "cancel + return | complex",
+        "category_comments": "intent=return; expected_actions=9; write_actions=cancel,return; aligned",
+        "complexity": "complex"
     },
     {
         "id": "17",
@@ -1705,7 +1790,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_address | moderate",
+        "category_comments": "intent=modify; expected_actions=6; write_actions=modify_order_address; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "18",
@@ -1783,7 +1873,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "exchange_resolution",
+        "sub_category": "exchange | moderate",
+        "category_comments": "intent=exchange; expected_actions=5; write_actions=exchange; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "19",
@@ -1880,7 +1975,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "return_resolution",
+        "sub_category": "return | complex",
+        "category_comments": "intent=exchange; expected_actions=7; write_actions=return; intent_action_mismatch(intent=exchange)",
+        "complexity": "complex"
     },
     {
         "id": "20",
@@ -2004,7 +2104,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_items | complex",
+        "category_comments": "intent=general_support; expected_actions=10; write_actions=modify_order_items; aligned",
+        "complexity": "complex"
     },
     {
         "id": "21",
@@ -2144,7 +2249,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_items | very_complex",
+        "category_comments": "intent=exchange; expected_actions=12; write_actions=modify_order_items; intent_action_mismatch(intent=exchange)",
+        "complexity": "very_complex"
     },
     {
         "id": "22",
@@ -2249,7 +2359,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_address + modify_profile | complex",
+        "category_comments": "intent=modify; expected_actions=7; write_actions=modify_order_address,modify_profile; aligned",
+        "complexity": "complex"
     },
     {
         "id": "23",
@@ -2397,7 +2512,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "mixed_resolution",
+        "sub_category": "exchange + modify_order_items | very_complex",
+        "category_comments": "intent=exchange; expected_actions=12; write_actions=exchange,modify_order_items; aligned",
+        "complexity": "very_complex"
     },
     {
         "id": "24",
@@ -2430,7 +2550,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "information_lookup",
+        "category": "read_only_support",
+        "sub_category": "read_only | simple",
+        "category_comments": "intent=cancel; expected_actions=0; write_actions=none; intent_action_mismatch(intent=cancel)",
+        "complexity": "simple"
     },
     {
         "id": "25",
@@ -2509,7 +2634,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "information_lookup",
+        "category": "read_only_support",
+        "sub_category": "read_only | moderate",
+        "category_comments": "intent=return; expected_actions=6; write_actions=none; intent_action_mismatch(intent=return)",
+        "complexity": "moderate"
     },
     {
         "id": "26",
@@ -2610,7 +2740,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "escalation_or_exception_handling",
+        "category": "human_handoff_workflow",
+        "sub_category": "escalation + return | complex",
+        "category_comments": "intent=return; expected_actions=8; write_actions=escalation,return; aligned",
+        "complexity": "complex"
     },
     {
         "id": "27",
@@ -2696,7 +2831,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "exchange_resolution",
+        "sub_category": "exchange | moderate",
+        "category_comments": "intent=exchange; expected_actions=6; write_actions=exchange; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "28",
@@ -2833,7 +2973,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "return_resolution",
+        "sub_category": "return | very_complex",
+        "category_comments": "intent=return; expected_actions=11; write_actions=return; aligned",
+        "complexity": "very_complex"
     },
     {
         "id": "29",
@@ -2932,7 +3077,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "exchange_resolution",
+        "sub_category": "exchange | moderate",
+        "category_comments": "intent=exchange; expected_actions=6; write_actions=exchange; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "30",
@@ -3078,7 +3228,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "mixed_resolution",
+        "sub_category": "cancel + return | very_complex",
+        "category_comments": "intent=exchange; expected_actions=13; write_actions=cancel,return; intent_action_mismatch(intent=exchange)",
+        "complexity": "very_complex"
     },
     {
         "id": "31",
@@ -3212,7 +3367,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "mixed_resolution",
+        "sub_category": "cancel + return | very_complex",
+        "category_comments": "intent=return; expected_actions=12; write_actions=cancel,return; aligned",
+        "complexity": "very_complex"
     },
     {
         "id": "32",
@@ -3355,7 +3515,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "mixed_resolution",
+        "sub_category": "cancel + return | very_complex",
+        "category_comments": "intent=return; expected_actions=13; write_actions=cancel,return; aligned",
+        "complexity": "very_complex"
     },
     {
         "id": "33",
@@ -3439,7 +3604,12 @@
             "reward_basis": [
                 "DB"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_profile | moderate",
+        "category_comments": "intent=return; expected_actions=6; write_actions=modify_profile; intent_action_mismatch(intent=return)",
+        "complexity": "moderate"
     },
     {
         "id": "34",
@@ -3523,7 +3693,12 @@
             "reward_basis": [
                 "DB"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_address | moderate",
+        "category_comments": "intent=return; expected_actions=6; write_actions=modify_order_address; intent_action_mismatch(intent=return)",
+        "complexity": "moderate"
     },
     {
         "id": "35",
@@ -3619,7 +3794,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "mixed_resolution",
+        "sub_category": "modify_order_items + return | complex",
+        "category_comments": "intent=return; expected_actions=7; write_actions=modify_order_items,return; aligned",
+        "complexity": "complex"
     },
     {
         "id": "36",
@@ -3673,7 +3853,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_items | simple",
+        "category_comments": "intent=cancel; expected_actions=1; write_actions=modify_order_items; intent_action_mismatch(intent=cancel)",
+        "complexity": "simple"
     },
     {
         "id": "37",
@@ -3753,7 +3938,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_items | moderate",
+        "category_comments": "intent=cancel; expected_actions=4; write_actions=modify_order_items; intent_action_mismatch(intent=cancel)",
+        "complexity": "moderate"
     },
     {
         "id": "38",
@@ -3823,7 +4013,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "cancellation_resolution",
+        "sub_category": "cancel | moderate",
+        "category_comments": "intent=cancel; expected_actions=4; write_actions=cancel; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "39",
@@ -3906,7 +4101,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_profile | moderate",
+        "category_comments": "intent=modify; expected_actions=5; write_actions=modify_profile; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "40",
@@ -3974,7 +4174,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_payment | moderate",
+        "category_comments": "intent=modify; expected_actions=4; write_actions=modify_order_payment; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "41",
@@ -4110,7 +4315,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_address + modify_order_items + modify_profile | complex",
+        "category_comments": "intent=modify; expected_actions=10; write_actions=modify_order_address,modify_order_items,modify_profile; aligned",
+        "complexity": "complex"
     },
     {
         "id": "42",
@@ -4246,7 +4456,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_address + modify_order_items + modify_profile | complex",
+        "category_comments": "intent=modify; expected_actions=10; write_actions=modify_order_address,modify_order_items,modify_profile; aligned",
+        "complexity": "complex"
     },
     {
         "id": "43",
@@ -4335,7 +4550,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_profile | moderate",
+        "category_comments": "intent=modify; expected_actions=5; write_actions=modify_profile; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "44",
@@ -4417,7 +4637,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_items | moderate",
+        "category_comments": "intent=modify; expected_actions=5; write_actions=modify_order_items; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "45",
@@ -4499,7 +4724,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "exchange_resolution",
+        "sub_category": "exchange | moderate",
+        "category_comments": "intent=exchange; expected_actions=5; write_actions=exchange; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "46",
@@ -4597,7 +4827,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "return_resolution",
+        "sub_category": "return | complex",
+        "category_comments": "intent=return; expected_actions=7; write_actions=return; aligned",
+        "complexity": "complex"
     },
     {
         "id": "47",
@@ -4695,7 +4930,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "return_resolution",
+        "sub_category": "return | complex",
+        "category_comments": "intent=return; expected_actions=7; write_actions=return; aligned",
+        "complexity": "complex"
     },
     {
         "id": "48",
@@ -4778,7 +5018,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "return_resolution",
+        "sub_category": "return | moderate",
+        "category_comments": "intent=return; expected_actions=6; write_actions=return; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "49",
@@ -4896,7 +5141,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "exchange_resolution",
+        "sub_category": "exchange | complex",
+        "category_comments": "intent=exchange; expected_actions=10; write_actions=exchange; aligned",
+        "complexity": "complex"
     },
     {
         "id": "50",
@@ -4934,7 +5184,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "escalation_or_exception_handling",
+        "category": "human_handoff_workflow",
+        "sub_category": "escalation | simple",
+        "category_comments": "intent=cancel; expected_actions=1; write_actions=escalation; intent_action_mismatch(intent=cancel)",
+        "complexity": "simple"
     },
     {
         "id": "51",
@@ -5017,7 +5272,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "return_resolution",
+        "sub_category": "return | moderate",
+        "category_comments": "intent=return; expected_actions=6; write_actions=return; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "52",
@@ -5095,7 +5355,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "exchange_resolution",
+        "sub_category": "exchange | moderate",
+        "category_comments": "intent=exchange; expected_actions=5; write_actions=exchange; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "53",
@@ -5178,7 +5443,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "return_resolution",
+        "sub_category": "return | moderate",
+        "category_comments": "intent=general_support; expected_actions=6; write_actions=return; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "54",
@@ -5316,7 +5586,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "mixed_resolution",
+        "sub_category": "cancel + return | very_complex",
+        "category_comments": "intent=exchange; expected_actions=12; write_actions=cancel,return; intent_action_mismatch(intent=exchange)",
+        "complexity": "very_complex"
     },
     {
         "id": "55",
@@ -5462,7 +5737,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "mixed_resolution",
+        "sub_category": "cancel + return | very_complex",
+        "category_comments": "intent=return; expected_actions=13; write_actions=cancel,return; aligned",
+        "complexity": "very_complex"
     },
     {
         "id": "56",
@@ -5556,7 +5836,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_items | complex",
+        "category_comments": "intent=cancel; expected_actions=7; write_actions=modify_order_items; intent_action_mismatch(intent=cancel)",
+        "complexity": "complex"
     },
     {
         "id": "57",
@@ -5584,7 +5869,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "information_lookup",
+        "category": "read_only_support",
+        "sub_category": "read_only | simple",
+        "category_comments": "intent=cancel; expected_actions=0; write_actions=none; intent_action_mismatch(intent=cancel)",
+        "complexity": "simple"
     },
     {
         "id": "58",
@@ -5672,7 +5962,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "exchange_resolution",
+        "sub_category": "exchange | moderate",
+        "category_comments": "intent=exchange; expected_actions=6; write_actions=exchange; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "59",
@@ -5756,7 +6051,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "mixed_resolution",
+        "sub_category": "cancel + modify_order_address | moderate",
+        "category_comments": "intent=cancel; expected_actions=5; write_actions=cancel,modify_order_address; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "60",
@@ -5830,7 +6130,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_items | moderate",
+        "category_comments": "intent=modify; expected_actions=4; write_actions=modify_order_items; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "61",
@@ -5908,7 +6213,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_items | moderate",
+        "category_comments": "intent=modify; expected_actions=5; write_actions=modify_order_items; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "62",
@@ -5985,7 +6295,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "information_lookup",
+        "category": "read_only_support",
+        "sub_category": "read_only | moderate",
+        "category_comments": "intent=return; expected_actions=5; write_actions=none; intent_action_mismatch(intent=return)",
+        "complexity": "moderate"
     },
     {
         "id": "63",
@@ -6087,7 +6402,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_items | complex",
+        "category_comments": "intent=return; expected_actions=7; write_actions=modify_order_items; intent_action_mismatch(intent=return)",
+        "complexity": "complex"
     },
     {
         "id": "64",
@@ -6196,7 +6516,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "mixed_resolution",
+        "sub_category": "exchange + modify_order_items | complex",
+        "category_comments": "intent=exchange; expected_actions=8; write_actions=exchange,modify_order_items; aligned",
+        "complexity": "complex"
     },
     {
         "id": "65",
@@ -6251,7 +6576,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "information_lookup",
+        "category": "read_only_support",
+        "sub_category": "read_only | moderate",
+        "category_comments": "intent=exchange; expected_actions=3; write_actions=none; intent_action_mismatch(intent=exchange)",
+        "complexity": "moderate"
     },
     {
         "id": "66",
@@ -6323,7 +6653,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "cancellation_resolution",
+        "sub_category": "cancel | moderate",
+        "category_comments": "intent=return; expected_actions=5; write_actions=cancel; intent_action_mismatch(intent=return)",
+        "complexity": "moderate"
     },
     {
         "id": "67",
@@ -6402,7 +6737,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "information_lookup",
+        "category": "read_only_support",
+        "sub_category": "read_only | moderate",
+        "category_comments": "intent=general_support; expected_actions=5; write_actions=none; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "68",
@@ -6471,7 +6811,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "information_lookup",
+        "category": "read_only_support",
+        "sub_category": "read_only | moderate",
+        "category_comments": "intent=general_support; expected_actions=4; write_actions=none; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "69",
@@ -6535,7 +6880,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "cancellation_resolution",
+        "sub_category": "cancel | moderate",
+        "category_comments": "intent=return; expected_actions=4; write_actions=cancel; intent_action_mismatch(intent=return)",
+        "complexity": "moderate"
     },
     {
         "id": "70",
@@ -6583,7 +6933,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "exchange_resolution",
+        "sub_category": "exchange | simple",
+        "category_comments": "intent=exchange; expected_actions=1; write_actions=exchange; aligned",
+        "complexity": "simple"
     },
     {
         "id": "71",
@@ -6641,7 +6996,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_address + modify_order_items | moderate",
+        "category_comments": "intent=modify; expected_actions=2; write_actions=modify_order_address,modify_order_items; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "72",
@@ -6699,7 +7059,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_address + modify_order_items | moderate",
+        "category_comments": "intent=modify; expected_actions=2; write_actions=modify_order_address,modify_order_items; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "73",
@@ -6743,7 +7108,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "return_resolution",
+        "sub_category": "return | simple",
+        "category_comments": "intent=return; expected_actions=1; write_actions=return; aligned",
+        "complexity": "simple"
     },
     {
         "id": "74",
@@ -6796,7 +7166,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "mixed_resolution",
+        "sub_category": "cancel + modify_order_items | moderate",
+        "category_comments": "intent=exchange; expected_actions=2; write_actions=cancel,modify_order_items; intent_action_mismatch(intent=exchange)",
+        "complexity": "moderate"
     },
     {
         "id": "75",
@@ -6840,7 +7215,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "exchange_resolution",
+        "sub_category": "exchange | simple",
+        "category_comments": "intent=exchange; expected_actions=1; write_actions=exchange; aligned",
+        "complexity": "simple"
     },
     {
         "id": "76",
@@ -6891,7 +7271,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "cancellation_resolution",
+        "sub_category": "cancel | simple",
+        "category_comments": "intent=cancel; expected_actions=2; write_actions=cancel; aligned",
+        "complexity": "simple"
     },
     {
         "id": "77",
@@ -6935,7 +7320,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "exchange_resolution",
+        "sub_category": "exchange | simple",
+        "category_comments": "intent=information_lookup; expected_actions=1; write_actions=exchange; aligned",
+        "complexity": "simple"
     },
     {
         "id": "78",
@@ -7002,7 +7392,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "mixed_resolution",
+        "sub_category": "cancel + modify_order_address + modify_order_items | complex",
+        "category_comments": "intent=exchange; expected_actions=3; write_actions=cancel,modify_order_address,modify_order_items; intent_action_mismatch(intent=exchange)",
+        "complexity": "complex"
     },
     {
         "id": "79",
@@ -7046,7 +7441,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_items | simple",
+        "category_comments": "intent=modify; expected_actions=1; write_actions=modify_order_items; aligned",
+        "complexity": "simple"
     },
     {
         "id": "80",
@@ -7090,7 +7490,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "exchange_resolution",
+        "sub_category": "exchange | simple",
+        "category_comments": "intent=exchange; expected_actions=1; write_actions=exchange; aligned",
+        "complexity": "simple"
     },
     {
         "id": "81",
@@ -7137,7 +7542,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "cancellation_resolution",
+        "sub_category": "cancel | simple",
+        "category_comments": "intent=cancel; expected_actions=2; write_actions=cancel; aligned",
+        "complexity": "simple"
     },
     {
         "id": "82",
@@ -7181,7 +7591,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "return_resolution",
+        "sub_category": "return | simple",
+        "category_comments": "intent=return; expected_actions=1; write_actions=return; aligned",
+        "complexity": "simple"
     },
     {
         "id": "83",
@@ -7222,7 +7637,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "return_resolution",
+        "sub_category": "return | simple",
+        "category_comments": "intent=return; expected_actions=1; write_actions=return; aligned",
+        "complexity": "simple"
     },
     {
         "id": "84",
@@ -7263,7 +7683,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "return_resolution",
+        "sub_category": "return | simple",
+        "category_comments": "intent=return; expected_actions=1; write_actions=return; aligned",
+        "complexity": "simple"
     },
     {
         "id": "85",
@@ -7307,7 +7732,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_items | simple",
+        "category_comments": "intent=exchange; expected_actions=1; write_actions=modify_order_items; intent_action_mismatch(intent=exchange)",
+        "complexity": "simple"
     },
     {
         "id": "86",
@@ -7365,7 +7795,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_items + modify_profile | moderate",
+        "category_comments": "intent=exchange; expected_actions=2; write_actions=modify_order_items,modify_profile; intent_action_mismatch(intent=exchange)",
+        "complexity": "moderate"
     },
     {
         "id": "87",
@@ -7450,7 +7885,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_address + modify_profile | moderate",
+        "category_comments": "intent=modify; expected_actions=4; write_actions=modify_order_address,modify_profile; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "88",
@@ -7488,7 +7928,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "cancellation_resolution",
+        "sub_category": "cancel | simple",
+        "category_comments": "intent=cancel; expected_actions=1; write_actions=cancel; aligned",
+        "complexity": "simple"
     },
     {
         "id": "89",
@@ -7539,7 +7984,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "return_resolution",
+        "sub_category": "return | simple",
+        "category_comments": "intent=exchange; expected_actions=1; write_actions=return; intent_action_mismatch(intent=exchange)",
+        "complexity": "simple"
     },
     {
         "id": "90",
@@ -7577,7 +8027,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "cancellation_resolution",
+        "sub_category": "cancel | simple",
+        "category_comments": "intent=cancel; expected_actions=1; write_actions=cancel; aligned",
+        "complexity": "simple"
     },
     {
         "id": "91",
@@ -7635,7 +8090,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "mixed_resolution",
+        "sub_category": "exchange + return | moderate",
+        "category_comments": "intent=exchange; expected_actions=2; write_actions=exchange,return; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "92",
@@ -7690,7 +8150,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "return_resolution",
+        "sub_category": "return | simple",
+        "category_comments": "intent=return; expected_actions=2; write_actions=return; aligned",
+        "complexity": "simple"
     },
     {
         "id": "93",
@@ -7734,7 +8199,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "exchange_resolution",
+        "sub_category": "exchange | simple",
+        "category_comments": "intent=exchange; expected_actions=1; write_actions=exchange; aligned",
+        "complexity": "simple"
     },
     {
         "id": "94",
@@ -7778,7 +8248,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "exchange_resolution",
+        "sub_category": "exchange | simple",
+        "category_comments": "intent=exchange; expected_actions=1; write_actions=exchange; aligned",
+        "complexity": "simple"
     },
     {
         "id": "95",
@@ -7845,7 +8320,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "exchange_resolution",
+        "sub_category": "exchange | simple",
+        "category_comments": "intent=exchange; expected_actions=2; write_actions=exchange; aligned",
+        "complexity": "simple"
     },
     {
         "id": "96",
@@ -7903,7 +8383,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_address + modify_order_items | moderate",
+        "category_comments": "intent=exchange; expected_actions=2; write_actions=modify_order_address,modify_order_items; intent_action_mismatch(intent=exchange)",
+        "complexity": "moderate"
     },
     {
         "id": "97",
@@ -7961,7 +8446,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_address + modify_order_items | moderate",
+        "category_comments": "intent=exchange; expected_actions=2; write_actions=modify_order_address,modify_order_items; intent_action_mismatch(intent=exchange)",
+        "complexity": "moderate"
     },
     {
         "id": "98",
@@ -8031,7 +8521,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "mixed_resolution",
+        "sub_category": "cancel + exchange | moderate",
+        "category_comments": "intent=exchange; expected_actions=3; write_actions=cancel,exchange; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "99",
@@ -8092,7 +8587,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "exchange_resolution",
+        "sub_category": "exchange | simple",
+        "category_comments": "intent=exchange; expected_actions=2; write_actions=exchange; aligned",
+        "complexity": "simple"
     },
     {
         "id": "100",
@@ -8150,7 +8650,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "mixed_resolution",
+        "sub_category": "modify_order_items + return | moderate",
+        "category_comments": "intent=return; expected_actions=2; write_actions=modify_order_items,return; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "101",
@@ -8223,7 +8728,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_address + modify_order_items | moderate",
+        "category_comments": "intent=modify; expected_actions=3; write_actions=modify_order_address,modify_order_items; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "102",
@@ -8296,7 +8806,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "mixed_resolution",
+        "sub_category": "exchange + modify_order_address + modify_order_items | complex",
+        "category_comments": "intent=exchange; expected_actions=3; write_actions=exchange,modify_order_address,modify_order_items; aligned",
+        "complexity": "complex"
     },
     {
         "id": "103",
@@ -8383,7 +8898,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "mixed_resolution",
+        "sub_category": "modify_order_address + modify_order_items + return | complex",
+        "category_comments": "intent=return; expected_actions=4; write_actions=modify_order_address,modify_order_items,return; aligned",
+        "complexity": "complex"
     },
     {
         "id": "104",
@@ -8482,7 +9002,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "mixed_resolution",
+        "sub_category": "modify_order_address + modify_order_items + return | complex",
+        "category_comments": "intent=return; expected_actions=5; write_actions=modify_order_address,modify_order_items,return; aligned",
+        "complexity": "complex"
     },
     {
         "id": "105",
@@ -8530,7 +9055,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "exchange_resolution",
+        "sub_category": "exchange | simple",
+        "category_comments": "intent=exchange; expected_actions=1; write_actions=exchange; aligned",
+        "complexity": "simple"
     },
     {
         "id": "106",
@@ -8576,7 +9106,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "exchange_resolution",
+        "sub_category": "exchange | simple",
+        "category_comments": "intent=exchange; expected_actions=1; write_actions=exchange; aligned",
+        "complexity": "simple"
     },
     {
         "id": "107",
@@ -8637,7 +9172,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "exchange_resolution",
+        "sub_category": "exchange | simple",
+        "category_comments": "intent=exchange; expected_actions=2; write_actions=exchange; aligned",
+        "complexity": "simple"
     },
     {
         "id": "108",
@@ -8684,7 +9224,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "return_resolution",
+        "sub_category": "return | simple",
+        "category_comments": "intent=return; expected_actions=1; write_actions=return; aligned",
+        "complexity": "simple"
     },
     {
         "id": "109",
@@ -8759,7 +9304,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_address + modify_order_items + modify_profile | complex",
+        "category_comments": "intent=exchange; expected_actions=3; write_actions=modify_order_address,modify_order_items,modify_profile; intent_action_mismatch(intent=exchange)",
+        "complexity": "complex"
     },
     {
         "id": "110",
@@ -8835,7 +9385,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_address + modify_order_items + modify_profile | complex",
+        "category_comments": "intent=exchange; expected_actions=3; write_actions=modify_order_address,modify_order_items,modify_profile; intent_action_mismatch(intent=exchange)",
+        "complexity": "complex"
     },
     {
         "id": "111",
@@ -8910,7 +9465,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_address + modify_order_items | moderate",
+        "category_comments": "intent=exchange; expected_actions=3; write_actions=modify_order_address,modify_order_items; intent_action_mismatch(intent=exchange)",
+        "complexity": "moderate"
     },
     {
         "id": "112",
@@ -8983,7 +9543,12 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_or_profile_modification",
+        "category": "modification_workflow",
+        "sub_category": "modify_order_address + modify_order_items | moderate",
+        "category_comments": "intent=modify; expected_actions=3; write_actions=modify_order_address,modify_order_items; aligned",
+        "complexity": "moderate"
     },
     {
         "id": "113",
@@ -9032,6 +9597,11 @@
                 "DB",
                 "NL_ASSERTION"
             ]
-        }
+        },
+        "super_category": "order_resolution",
+        "category": "cancellation_resolution",
+        "sub_category": "cancel | simple",
+        "category_comments": "intent=cancel; expected_actions=2; write_actions=cancel; aligned",
+        "complexity": "simple"
     }
 ]
