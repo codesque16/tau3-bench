@@ -216,6 +216,10 @@ class ParticipantMessageBase(BaseModel):
     cost: Optional[float] = None
     usage: Optional[dict] = None
     raw_data: Optional[dict] = None
+    reasoning_content: Optional[str] = Field(
+        default=None,
+        description="Model chain-of-thought separate from user-visible content (Vertex / Logfire).",
+    )
     generation_time_seconds: Optional[float] = Field(
         description="Wall clock time (seconds) for LLM generation of this message.",
         default=None,
@@ -376,6 +380,7 @@ class ParticipantMessageBase(BaseModel):
             and self.is_audio == other.is_audio
             and self.tool_calls == other.tool_calls
             and self.audio_content == other.audio_content
+            and self.reasoning_content == other.reasoning_content
         )
 
 
@@ -402,6 +407,7 @@ class AssistantMessage(ParticipantMessageBase):
         usage: Optional[dict] = None,
         raw_data: Optional[dict] = None,
         generation_time_seconds: Optional[float] = None,
+        reasoning_content: Optional[str] = None,
     ) -> "AssistantMessage":
         """Create a text-only assistant message (half-duplex / standard mode)."""
         return cls(
@@ -412,6 +418,7 @@ class AssistantMessage(ParticipantMessageBase):
             usage=usage,
             raw_data=raw_data,
             generation_time_seconds=generation_time_seconds,
+            reasoning_content=reasoning_content,
         )
 
     @classmethod
@@ -488,6 +495,7 @@ class UserMessage(ParticipantMessageBase):
         usage: Optional[dict] = None,
         raw_data: Optional[dict] = None,
         generation_time_seconds: Optional[float] = None,
+        reasoning_content: Optional[str] = None,
     ) -> "UserMessage":
         """Create a text-only user message (half-duplex / standard mode)."""
         return cls(
@@ -498,6 +506,7 @@ class UserMessage(ParticipantMessageBase):
             usage=usage,
             raw_data=raw_data,
             generation_time_seconds=generation_time_seconds,
+            reasoning_content=reasoning_content,
         )
 
     @classmethod

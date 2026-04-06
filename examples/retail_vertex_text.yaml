@@ -3,6 +3,21 @@
 # Chains are supported (base_run pointing to a run that also has base_run). Cycles are rejected.
 # Use "retail_assistant_solo" for one-shot assistant (ticket in first user turn, policy_solo.md).
 # Optional root key: run_concurrency: N — run up to N selected YAML runs in parallel (default 1). Override: --run-concurrency N.
+#
+# Vertex dedicated-endpoint solos (from repo root, after ``cd tau3-bench-fork``):
+#   uv run tau2config --config examples/retail_vertex_text.yaml --run-ids retail_solo_qwen35_9b_vertex_endpoint
+#   uv run tau2config --config examples/retail_vertex_text.yaml --run-ids retail_solo_gemma4_31b_vertex_endpoint
+#   uv run tau2config --config examples/retail_vertex_text.yaml --run-ids retail_solo_qwen35_9b_vertex_endpoint retail_solo_gemma4_31b_vertex_endpoint
+#
+# OpenAI-compatible vLLM on Cloud Run (identity token auth, same as ``gcloud auth print-identity-token`` audience = service URL):
+#   uv run tau2config --config examples/retail_vertex_text.yaml --run-ids retail_solo_gemma4_26b_bf16_cloud_run
+#   # optional: retail_solo_gemma4_26b_fp8_cloud_run retail_solo_gemma4_31b_fp8_cloud_run
+# Conversation (agent on Cloud Run Gemma, user sim on Vertex Gemini):
+#   uv run tau2config --config examples/retail_vertex_text.yaml --run-ids retail_conv_full_gemma4_26b_bf16_cloud_run
+#   # optional: retail_conv_full_gemma4_26b_fp8_cloud_run retail_conv_full_gemma4_31b_fp8_cloud_run
+#
+# Keep-warm ping (from repo ``scripts/gcloud_scripts``): same run ids as keys — see ``vertex_warm_endpoints.yaml`` or
+#   ./vertex_endpoint_warm.sh --config ../../tau3-bench-fork/examples/retail_vertex_text.yaml retail_solo_gemma4_31b_vertex_endpoint
 
 run_concurrency: 6
 # enabled_run_ids:
@@ -121,6 +136,141 @@ runs:
       input_cost_per_million: 0.25
       cached_input_cost_per_million: 0.03
       output_cost_per_million: 1.50
+
+  # Dedicated Vertex AI ``:predict`` endpoint (Model Garden deploy), same keys as
+  # ``configs/gemini_solo_batch_qwen_vertex.yaml`` assistant block. Omit
+  # ``vertex_http_predict_base`` to build ``https://{endpoint_id}.{location}-{project}.prediction.vertexai.goog``.
+  # Put sampling / vLLM knobs under ``vertex_endpoint_parameters`` (merged into ``instances[0]``);
+  # ``agent_llm_args.temperature`` still works but nesting here keeps endpoint wiring obvious.
+  retail_solo_qwen35_9b_vertex_endpoint:
+    base_run: retail_solo_full_g31fl_low_reasoning_0
+    save_to: retail_solo_qwen35_9b_vertex_endpoint
+    seed: 111222333
+    agent_llm: qwen3-5-9b-vertex-endpoint
+    agent_llm_args:
+      vertex_project: "53845524870"
+      vertex_location: "us-central1"
+      vertex_http_predict_api_version: "v1"
+      vertex_endpoint_id: "mg-endpoint-b9895d67-2e18-417d-ad70-a68e58f25dd9"
+      vertex_http_predict_base: "https://mg-endpoint-b9895d67-2e18-417d-ad70-a68e58f25dd9.us-central1-53845524870.prediction.vertexai.goog"
+      vertex_endpoint_parameters:
+        temperature: 0
+        max_tokens: 2048
+        top_p: 0.95
+        chat_template_kwargs:
+          enable_thinking: false
+
+  # Dedicated host subdomain uses project number 117632879002; :predict path uses 53845524870
+  # (same split as console). Warm: VERTEX_PROJECT_NUMBER=117632879002 VERTEX_PREDICT_PROJECT=53845524870
+  # Gemma 4 thinking: (1) Request ``chat_template_kwargs.enable_thinking: true`` (below).
+  # (2) vLLM ``--reasoning-parser=gemma4``; Vertex returns chain-of-thought in ``message.reasoning``
+  # (raw vLLM often uses ``reasoning_content``). tau2 merges that field with ``message.content``.
+  # (3) If reasoning is still empty, try ``skip_special_tokens: false`` (vLLM workaround for Gemma4
+  # parser + stripped channel tokens; see vLLM issue #38855). Optional server default:
+  # ``--default-chat-template-kwargs '{"enable_thinking": true}'``.
+  # https://docs.vllm.ai/projects/recipes/en/latest/Google/Gemma4.html#thinking-reasoning-mode
+  # Optional ``agent_llm_args.vertex_include_reasoning_in_request`` (default true): when false,
+  # ``:predict`` history uses body-only ``content``; Logfire Model Run still shows thoughts.
+  retail_solo_gemma4_31b_vertex_endpoint:
+    base_run: retail_solo_full_g31fl_low_reasoning_0
+    save_to: retail_solo_gemma4_31b_vertex_endpoint
+    seed: 444555666
+    agent_llm: gemma-4-31b-it-vertex-endpoint
+    num_trials: 1
+    agent_llm_args:
+      vertex_project: "53845524870"
+      vertex_location: "asia-southeast1"
+      vertex_http_predict_api_version: "v1"
+      vertex_endpoint_id: "mg-endpoint-6cf1c18e-4fec-477e-add1-3022a520a5ab"
+      vertex_http_predict_base: "https://mg-endpoint-6cf1c18e-4fec-477e-add1-3022a520a5ab.asia-southeast1-117632879002.prediction.vertexai.goog"
+      vertex_endpoint_parameters:
+        temperature: 0
+        max_tokens: 4096
+        top_p: 0.95
+        skip_special_tokens: false
+        chat_template_kwargs:
+          enable_thinking: true
+
+  # vLLM on Cloud Run — ``POST .../v1/chat/completions``. Set ``vertex_openai_chat_url`` to the
+  # service root or full chat path; ``vertex_openai_chat_model`` must match the server's
+  # ``SERVED_MODEL_NAME`` (see ``scripts/gcloud_scripts/hf_gcs_deploy_cloud_run/*.env``).
+  # Default auth: Google identity token with audience ``https://<host>``; use
+  # ``vertex_openai_chat_use_access_token: true`` only if your ingress accepts OAuth access tokens.
+  # Gemma 4 thinking: deploy with ``--reasoning-parser gemma4`` (and ``--tool-call-parser gemma4``
+  # for tools). ``chat_template_kwargs`` is sent at the **top level** of the JSON body (same as
+  # raw ``curl`` to ``/v1/chat/completions``). For OpenAI-SDK-style ``extra_body`` only, nest it
+  # under ``vertex_endpoint_parameters.extra_body``; or set env
+  # ``TAU2_VLLM_MIRROR_CHAT_TEMPLATE_KWARGS_EXTRA_BODY=1`` to duplicate into ``extra_body``.
+  retail_solo_gemma4_26b_bf16_cloud_run:
+    base_run: retail_solo_full_g31fl_low_reasoning_0
+    save_to: retail_solo_gemma4_26b_bf16_cloud_run
+    seed: 771001001
+    agent_llm: gemma4-26b-cloud-run
+    num_trials: 1
+    agent_llm_args:
+      vertex_openai_chat_url: "https://gemma4-26b-bf16-gcreopmlnq-uc.a.run.app"
+      vertex_openai_chat_model: "gemma4-26b"
+      vertex_endpoint_parameters:
+        temperature: 0
+        max_tokens: 4096
+        top_p: 0.95
+        skip_special_tokens: false
+        chat_template_kwargs:
+          enable_thinking: true
+
+  retail_solo_gemma4_26b_fp8_cloud_run:
+    base_run: retail_solo_gemma4_26b_bf16_cloud_run
+    save_to: retail_solo_gemma4_26b_fp8_cloud_run
+    seed: 772002002
+    agent_llm: gemma4-26b-fp8-cloud-run
+    agent_llm_args:
+      vertex_openai_chat_url: "https://gemma4-26b-fp8-gcreopmlnq-uc.a.run.app"
+      vertex_openai_chat_model: "gemma4-26b-fp8"
+
+  retail_solo_gemma4_31b_fp8_cloud_run:
+    base_run: retail_solo_gemma4_26b_bf16_cloud_run
+    save_to: retail_solo_gemma4_31b_fp8_cloud_run
+    seed: 773003003
+    agent_llm: gemma4-31b-fp8-cloud-run
+    agent_llm_args:
+      vertex_openai_chat_url: "https://gemma4-31b-fp8-gcreopmlnq-uc.a.run.app"
+      # Matches ``SERVED_MODEL_NAME`` in gemma4-31b-fp8.env (change if your deploy differs).
+      vertex_openai_chat_model: "gemma4"
+
+  # --- Conversation + Cloud Run Gemma (agent); user simulator stays ``vertex_user_simulator`` / Gemini ---
+  retail_conv_full_gemma4_26b_bf16_cloud_run:
+    base_run: retail_conv_full_g31fl_low_reasoning_0
+    save_to: retail_conv_full_gemma4_26b_bf16_cloud_run
+    seed: 881001001
+    agent_llm: gemma4-26b-cloud-run
+    agent_llm_args:
+      vertex_openai_chat_url: "https://gemma4-26b-bf16-gcreopmlnq-uc.a.run.app"
+      vertex_openai_chat_model: "gemma4-26b"
+      vertex_endpoint_parameters:
+        temperature: 0
+        max_tokens: 4096
+        top_p: 0.95
+        skip_special_tokens: false
+        chat_template_kwargs:
+          enable_thinking: true
+
+  retail_conv_full_gemma4_26b_fp8_cloud_run:
+    base_run: retail_conv_full_gemma4_26b_bf16_cloud_run
+    save_to: retail_conv_full_gemma4_26b_fp8_cloud_run
+    seed: 882002002
+    agent_llm: gemma4-26b-fp8-cloud-run
+    agent_llm_args:
+      vertex_openai_chat_url: "https://gemma4-26b-fp8-gcreopmlnq-uc.a.run.app"
+      vertex_openai_chat_model: "gemma4-26b-fp8"
+
+  retail_conv_full_gemma4_31b_fp8_cloud_run:
+    base_run: retail_conv_full_gemma4_26b_bf16_cloud_run
+    save_to: retail_conv_full_gemma4_31b_fp8_cloud_run
+    seed: 883003003
+    agent_llm: gemma4-31b-fp8-cloud-run
+    agent_llm_args:
+      vertex_openai_chat_url: "https://gemma4-31b-fp8-gcreopmlnq-uc.a.run.app"
+      vertex_openai_chat_model: "gemma4"
 
   retail_solo_full_g31fl_low_reasoning_0_3:
     base_run: retail_solo_full_g31fl_low_reasoning_0

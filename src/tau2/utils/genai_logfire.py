@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from contextlib import nullcontext
 import base64
 import json
 import os
+import re
 import time
+from contextlib import nullcontext
 from typing import Any
 
 from loguru import logger
@@ -410,8 +411,36 @@ def _flatten_llm_messages_attrs(
         attrs[f"{out_prefix}.role"] = out_msg.get("role")
     if out_msg.get("content") is not None:
         attrs[f"{out_prefix}.content"] = out_msg.get("content")
-    if out_msg.get("reasoning_content"):
-        attrs[f"{out_prefix}.reasoning"] = out_msg.get("reasoning_content")
+    oc = out_msg.get("content")
+    if isinstance(oc, list):
+        thinking_out: list[str] = []
+        for k, part in enumerate(oc):
+            if not isinstance(part, dict):
+                continue
+            part_type = part.get("type")
+            part_text = part.get("text")
+            if part_type is not None:
+                attrs[f"{out_prefix}.contents.{k}.message_content.type"] = part_type
+            if part_text is not None:
+                attrs[f"{out_prefix}.contents.{k}.message_content.text"] = part_text
+                if part_type == "thinking" and isinstance(part_text, str):
+                    thinking_out.append(part_text)
+            part_sig = part.get("thought_signature")
+            if part_sig is not None:
+                attrs[f"{out_prefix}.contents.{k}.message_content.thought_signature"] = (
+                    part_sig
+                )
+        if thinking_out:
+            attrs[f"{out_prefix}.reasoning"] = "\n\n".join(t for t in thinking_out if t)
+    _rc = out_msg.get("reasoning_content")
+    _r = out_msg.get("reasoning")
+    _reasoning_out = (
+        _rc.strip()
+        if isinstance(_rc, str) and _rc.strip()
+        else (_r.strip() if isinstance(_r, str) and _r.strip() else None)
+    )
+    if _reasoning_out and f"{out_prefix}.reasoning" not in attrs:
+        attrs[f"{out_prefix}.reasoning"] = _reasoning_out
     out_tool_calls = out_msg.get("tool_calls")
     if isinstance(out_tool_calls, list):
         for j, tc in enumerate(out_tool_calls):
@@ -443,6 +472,370 @@ def _infer_tool_round(contents: list[Any]) -> int:
         if any(getattr(part, "function_response", None) is not None for part in parts):
             rounds += 1
     return rounds
+
+
+def _vertex_prediction_to_response_tool_calls(pred: dict[str, Any]) -> list[dict[str, Any]]:
+    choices = pred.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return []
+    c0 = choices[0] if isinstance(choices[0], dict) else {}
+    msg = c0.get("message") if isinstance(c0, dict) else {}
+    if not isinstance(msg, dict):
+        return []
+    tool_calls = msg.get("tool_calls")
+    if not isinstance(tool_calls, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for tc in tool_calls:
+        if not isinstance(tc, dict):
+            continue
+        fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+        name = fn.get("name") if isinstance(fn.get("name"), str) else ""
+        args_raw = fn.get("arguments")
+        if isinstance(args_raw, dict):
+            args_s = _json_dumps_safe(_to_jsonable(args_raw))
+        else:
+            args_s = str(args_raw or "{}")
+        out.append(
+            {
+                "id": str(tc.get("id") or ""),
+                "type": "function",
+                "function": {"name": name, "arguments": args_s},
+            }
+        )
+    return out
+
+
+def _openai_chat_messages_to_all_messages_events(
+    messages: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """
+    OpenAI/Vertex chat ``messages`` → Logfire ``all_messages_events`` shape.
+
+    Tool rows must include ``name`` (and optional ``id``) so Logfire can classify
+    them like Gemini-native traces; OpenAI only sends ``tool_call_id`` on tool
+    messages, so we resolve the function name from the latest preceding assistant
+    ``tool_calls`` entry with a matching ``id``.
+    """
+    from tau2.utils.vertex_endpoint_chat import LOGFIRE_MIXED_CONTENT_KEY
+
+    events: list[dict[str, Any]] = []
+    tool_call_id_to_name: dict[str, str] = {}
+    for m in messages:
+        if not isinstance(m, dict):
+            continue
+        role = m.get("role")
+        if role == "assistant":
+            tcs = m.get("tool_calls")
+            if isinstance(tcs, list):
+                for tc in tcs:
+                    if not isinstance(tc, dict):
+                        continue
+                    tid = tc.get("id")
+                    fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+                    fn_name = fn.get("name") if isinstance(fn.get("name"), str) else ""
+                    if tid is not None and fn_name:
+                        tool_call_id_to_name[str(tid)] = fn_name
+        lf_mixed = m.get(LOGFIRE_MIXED_CONTENT_KEY)
+        content_out: Any = (
+            lf_mixed if isinstance(lf_mixed, list) and lf_mixed else m.get("content")
+        )
+        ev: dict[str, Any] = {"role": role, "content": content_out}
+        if m.get("tool_calls") is not None:
+            ev["tool_calls"] = m["tool_calls"]
+        tcid = m.get("tool_call_id")
+        if tcid is not None:
+            ev["tool_call_id"] = tcid
+            if role == "tool":
+                s_id = str(tcid)
+                resolved = tool_call_id_to_name.get(s_id, "")
+                if resolved:
+                    ev["name"] = resolved
+                ev["id"] = s_id
+        events.append(ev)
+    return events
+
+
+def _vertex_endpoint_retry_delay_s(exc: BaseException) -> float | None:
+    m = re.search(r"Please retry in ([0-9.]+)s", str(exc))
+    if m:
+        try:
+            return float(m.group(1))
+        except ValueError:
+            return None
+    return None
+
+
+def _vertex_endpoint_retryable(exc: BaseException) -> bool:
+    s = str(exc)
+    return (
+        "HTTP 429" in s
+        or "HTTP 503" in s
+        or "RESOURCE_EXHAUSTED" in s
+        or "Too Many Requests" in s
+    )
+
+
+def vertex_endpoint_generate_with_logfire(
+    *,
+    predict_url: str,
+    body: dict[str, Any],
+    api_messages: list[dict[str, Any]],
+    openai_tools: list[dict[str, Any]] | None,
+    model_log_name: str,
+    actor: str,
+    call_name: str,
+    timeout_s: int = 120,
+    logfire_render_config: Any | None = None,
+    id_token_audience: str | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """
+    POST to a Vertex dedicated endpoint ``:predict`` or an OpenAI-compatible
+    ``/v1/chat/completions`` URL with Logfire + sim_llm_io logging.
+
+    When ``id_token_audience`` is set (typical for authenticated Cloud Run), the request uses a
+    Google **identity** token for that audience; otherwise an OAuth **access** token is used
+    (Vertex ``:predict``).
+
+    ``logfire_render_config`` is optional (e.g. an object with ``include_thoughts_in_history``);
+    passed to ``_include_thoughts_in_rendering`` so the Model Run UI gets the same mixed
+    ``thinking`` / ``text`` ``content`` list as native Gemini spans.
+
+    Returns ``(full_payload, inner_prediction_dict)`` (inner dict is OpenAI-shaped).
+    """
+    import google.auth
+    from google.auth.transport.requests import Request
+
+    from tau2.utils.vertex_dedicated_predict import vertex_predict_post
+    from tau2.utils.vertex_endpoint_chat import (
+        fetch_google_identity_token_for_audience,
+        is_openai_chat_completions_request_body,
+        parse_openai_chat_completion_response,
+        parse_vertex_prediction,
+        prediction_assistant_body_text,
+        prediction_message_reasoning_text,
+        tool_round_from_openai_messages,
+    )
+
+    max_retries = max(1, int(os.getenv("TAU2_VERTEX_ENDPOINT_MAX_RETRIES", "8")))
+    base_s = float(os.getenv("TAU2_VERTEX_ENDPOINT_RETRY_BASE_S", "1.0"))
+    cap_s = float(os.getenv("TAU2_VERTEX_ENDPOINT_RETRY_MAX_S", "120.0"))
+
+    openai_flat = isinstance(body, dict) and is_openai_chat_completions_request_body(body)
+
+    if id_token_audience:
+        token = fetch_google_identity_token_for_audience(id_token_audience)
+    else:
+        creds, _ = google.auth.default(
+            scopes=["https://www.googleapis.com/auth/cloud-platform"]
+        )
+        creds.refresh(Request())
+        token = getattr(creds, "token", None) or ""
+        if not token:
+            raise RuntimeError("Failed to obtain Google ADC token for Vertex endpoint predict.")
+
+    instance = (body.get("instances") or [{}])[0] if isinstance(body, dict) else {}
+    request_extras: dict[str, Any] = {
+        "url": predict_url,
+        "vertex_instance_keys": sorted(instance.keys()) if isinstance(instance, dict) else [],
+        "vertex_body_has_tool_choice": isinstance(instance, dict) and "tool_choice" in instance,
+        "openai_chat_completions_flat_body": openai_flat,
+        "id_token_audience": id_token_audience,
+    }
+    if openai_tools is not None:
+        request_extras["tools"] = openai_tools
+
+    gen_op = "chat.completions" if openai_flat else "predict"
+    try:
+        import logfire  # type: ignore
+
+        actor_for_span = "assistant" if actor == "agent" else actor
+        span_label = (
+            f"openai chat completions [{actor_for_span}]"
+            if openai_flat
+            else f"vertex.ai endpoints:predict [{actor_for_span}]"
+        )
+        span_short = (
+            f"openai.chat_completions [{actor_for_span}]"
+            if openai_flat
+            else f"vertex.endpoint.predict [{actor_for_span}]"
+        )
+        span_cm = logfire.span(
+            span_label,
+            _span_name=span_short,
+            _tags=["LLM"],
+            actor=actor,
+            call_name=call_name,
+            model=model_log_name,
+            llm_system="vertex",
+            llm_model_name=model_log_name,
+            gen_ai_operation_name=gen_op,
+            gen_ai_request_model=model_log_name,
+            gen_ai_response_model=model_log_name,
+            gen_ai_system="vertex",
+        )
+    except Exception:
+        logfire = None
+        span_cm = nullcontext()
+
+    tool_round = tool_round_from_openai_messages(api_messages)
+    request_data = {
+        "model": model_log_name,
+        "vertex_predict_url": predict_url,
+        "messages": api_messages,
+        "tools": openai_tools,
+        "body": _to_jsonable(body),
+    }
+    logger.info(
+        "[{}] {}: vertex endpoint model={} messages={}",
+        actor,
+        call_name,
+        model_log_name,
+        len(api_messages),
+    )
+
+    last_exc: BaseException | None = None
+    payload: dict[str, Any] = {}
+    for attempt in range(max_retries):
+        try:
+            payload = vertex_predict_post(predict_url, token, body, timeout_s=timeout_s)
+            break
+        except RuntimeError as e:
+            last_exc = e
+            if attempt >= max_retries - 1 or not _vertex_endpoint_retryable(e):
+                logger.error(f"[{actor}] {call_name} failed: {e}")
+                raise
+            delay = min(cap_s, base_s * (2**attempt))
+            suggested = _vertex_endpoint_retry_delay_s(e)
+            if suggested is not None:
+                delay = max(delay, min(cap_s, suggested))
+            logger.warning(
+                "[{}] {} attempt {}/{} failed ({}); retrying in {:.1f}s",
+                actor,
+                call_name,
+                attempt + 1,
+                max_retries,
+                e,
+                delay,
+            )
+            time.sleep(delay)
+    else:
+        assert last_exc is not None
+        raise last_exc
+
+    if openai_flat:
+        pred = parse_openai_chat_completion_response(payload)
+    else:
+        pred = parse_vertex_prediction(payload)
+    reasoning_only = prediction_message_reasoning_text(pred)
+    body_only = prediction_assistant_body_text(pred)
+    response_tool_calls = _vertex_prediction_to_response_tool_calls(pred)
+    usage = pred.get("usage") if isinstance(pred.get("usage"), dict) else {}
+    prompt_tokens = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
+    completion_tokens = int(
+        usage.get("completion_tokens") or usage.get("output_tokens") or 0
+    )
+    total_tokens = int(usage.get("total_tokens") or (prompt_tokens + completion_tokens))
+
+    include_thoughts = _include_thoughts_in_rendering(logfire_render_config)
+    last_assistant_event = _response_to_all_messages_event(
+        include_thoughts=include_thoughts,
+        reasoning=reasoning_only,
+        reasoning_blocks=[],
+        output_text_blocks=[],
+        output_text=body_only,
+        response_tool_calls=response_tool_calls,
+    )
+    response_data = {
+        "message": {
+            "role": "assistant",
+            "content": last_assistant_event.get("content"),
+            "reasoning": (
+                reasoning_only if include_thoughts and reasoning_only else None
+            ),
+            "reasoning_content": (
+                reasoning_only if include_thoughts and reasoning_only else None
+            ),
+            "tool_calls": response_tool_calls or None,
+        }
+    }
+    input_messages_events = _openai_chat_messages_to_all_messages_events(api_messages)
+    all_messages_events = input_messages_events + [last_assistant_event]
+    endpoint_io_json = {
+        "tool_round": tool_round,
+        "request": request_data,
+        "response": _to_jsonable(payload),
+        "prediction": _to_jsonable(pred),
+    }
+    request_data_for_model_run = {
+        "model": model_log_name,
+        "messages": input_messages_events,
+    }
+
+    with span_cm as span:
+        if logfire is not None and span is not None and hasattr(span, "set_attribute"):
+            span.set_attribute("llm.model_name", model_log_name)
+            span.set_attribute("llm.system", "vertex")
+            span.set_attribute("gen_ai.operation.name", gen_op)
+            span.set_attribute("gen_ai.request.model", model_log_name)
+            span.set_attribute("gen_ai.response.model", model_log_name)
+            span.set_attribute("gen_ai.system", "vertex")
+            span.set_attribute("gen_ai.usage.input_tokens", int(prompt_tokens))
+            span.set_attribute("gen_ai.usage.output_tokens", int(completion_tokens))
+            span.set_attribute("gen_ai.usage.total_tokens", int(total_tokens))
+            span.set_attribute("llm.token_count.prompt", int(prompt_tokens))
+            span.set_attribute("llm.token_count.completion", int(completion_tokens))
+            span.set_attribute("llm.token_count.total", int(total_tokens))
+            span.set_attribute("all_messages_events", all_messages_events)
+            span.set_attribute("request_data", request_data_for_model_run)
+            span.set_attribute("request_extras", request_extras)
+            span.set_attribute("response_data", response_data)
+            span.set_attribute("input.mime_type", "application/json")
+            span.set_attribute("input.value", {"messages": all_messages_events})
+            span.set_attribute("output.mime_type", "application/json")
+            span.set_attribute("output.value", response_data)
+            span.set_attribute("vertex_endpoint_io_json", endpoint_io_json)
+            span.set_attribute("tool_round", tool_round)
+            flat_attrs = _flatten_llm_messages_attrs(
+                all_messages_events=input_messages_events,
+                response_data=response_data,
+            )
+            for key, value in flat_attrs.items():
+                span.set_attribute(key, value)
+        if logfire is not None:
+            logfire.info(
+                "vertex.endpoint.http.raw_io",
+                model=model_log_name,
+                tool_round=tool_round,
+                vertex_endpoint_io_json=endpoint_io_json,
+            )
+
+    if actor in ("agent", "user"):
+        try:
+            from tau2.utils.sim_llm_io import write_sim_llm_io_json
+
+            write_sim_llm_io_json(
+                actor,
+                call_name=call_name,
+                payload={
+                    "format": (
+                        "vertex_openai_chat_completions"
+                        if openai_flat
+                        else "vertex_endpoint_predict"
+                    ),
+                    "model": model_log_name,
+                    "tool_round": tool_round,
+                    "vertex_endpoint_io_json": endpoint_io_json,
+                },
+            )
+        except Exception:
+            pass
+
+    logger.info(
+        f"[{actor}] {call_name}: success ("
+        f"{'openai chat completions' if openai_flat else 'vertex endpoint'})"
+    )
+    return payload, pred
 
 
 def genai_generate_with_logfire(

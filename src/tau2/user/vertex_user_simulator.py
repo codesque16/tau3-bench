@@ -2,18 +2,36 @@ import base64
 import json
 import os
 import time
+import types as py_types
 from typing import Any, Optional
 
 from loguru import logger
 
 from tau2.data_model.message import AssistantMessage, ToolCall, ToolMessage, UserMessage
 from tau2.user.user_simulator import UserSimulator
-from tau2.utils.genai_logfire import genai_generate_with_logfire
+from tau2.utils.genai_logfire import (
+    genai_generate_with_logfire,
+    vertex_endpoint_generate_with_logfire,
+)
 from tau2.utils.vertex_content_replay import (
     build_model_parts_from_raw_data,
     enrich_raw_candidates_parts_from_response,
     register_tool_names_from_parts,
     should_replay_thought_parts,
+)
+from tau2.utils.vertex_endpoint_chat import (
+    build_openai_chat_completions_body,
+    build_vertex_predict_body,
+    build_vertex_predict_url,
+    normalize_vertex_openai_chat_url,
+    prediction_assistant_text,
+    prediction_message_reasoning_text,
+    prediction_tool_calls_as_tau,
+    prediction_usage_with_cost,
+    tau_messages_to_openai_chat,
+    uses_vertex_endpoint,
+    uses_vertex_openai_chat,
+    vertex_openai_chat_id_token_audience,
 )
 
 
@@ -289,12 +307,89 @@ class VertexUserSimulator(UserSimulator):
 
         from google.genai import types
 
-        client = self._get_client()
         model = self._resolve_model_name()
 
         history = state.system_messages + state.flip_roles()
-        contents = self._to_gemini_contents(history)
         openai_tools = [tool.openai_schema for tool in self.tools] if self.tools else []
+
+        if uses_vertex_endpoint(self.llm_args):
+            api_messages = tau_messages_to_openai_chat(
+                self.system_prompt,
+                history,
+                vertex_include_reasoning_in_request=bool(
+                    self.llm_args.get("vertex_include_reasoning_in_request", True)
+                ),
+            )
+            if uses_vertex_openai_chat(self.llm_args):
+                predict_url = normalize_vertex_openai_chat_url(
+                    str(self.llm_args.get("vertex_openai_chat_url") or "")
+                )
+                openai_model = str(
+                    self.llm_args.get("vertex_openai_chat_model") or model
+                ).strip()
+                if not openai_model:
+                    raise ValueError(
+                        "Set vertex_openai_chat_model in llm_args (or a non-empty user_llm) "
+                        "when using vertex_openai_chat_url."
+                    )
+                body = build_openai_chat_completions_body(
+                    self.llm_args,
+                    api_messages,
+                    openai_tools or None,
+                    model=openai_model,
+                )
+                if self.llm_args.get("vertex_openai_chat_use_access_token"):
+                    id_audience = None
+                else:
+                    aud = str(self.llm_args.get("vertex_openai_chat_audience") or "").strip()
+                    id_audience = aud or vertex_openai_chat_id_token_audience(predict_url)
+            else:
+                predict_url = build_vertex_predict_url(self.llm_args)
+                body = build_vertex_predict_body(
+                    self.llm_args, api_messages, openai_tools or None
+                )
+                id_audience = None
+            start = time.perf_counter()
+            full_payload, pred = vertex_endpoint_generate_with_logfire(
+                predict_url=predict_url,
+                body=body,
+                api_messages=api_messages,
+                openai_tools=openai_tools or None,
+                model_log_name=model,
+                actor="user",
+                call_name="vertex_user_simulator_response",
+                logfire_render_config=py_types.SimpleNamespace(
+                    include_thoughts_in_history=(self.llm_args or {}).get(
+                        "include_thoughts_in_history"
+                    )
+                ),
+                id_token_audience=id_audience,
+            )
+            elapsed = time.perf_counter() - start
+            content = prediction_assistant_text(pred)
+            reasoning_only = prediction_message_reasoning_text(pred)
+            tool_calls = prediction_tool_calls_as_tau(pred, requestor="user")
+            usage, cost = prediction_usage_with_cost(
+                pred, pricing=self._resolve_pricing()
+            )
+            logger.debug(f"Vertex user response: {content}")
+            raw_data = {
+                "vertex_predict_response": full_payload,
+                "vertex_prediction": pred,
+            }
+            return UserMessage(
+                role="user",
+                content=content if content else None,
+                reasoning_content=(reasoning_only or None),
+                tool_calls=tool_calls or None,
+                cost=cost,
+                usage=usage,
+                raw_data=raw_data,
+                generation_time_seconds=elapsed,
+            )
+
+        client = self._get_client()
+        contents = self._to_gemini_contents(history)
         gemini_tools = self._to_gemini_tools(openai_tools)
 
         config_kwargs: dict[str, Any] = {
