@@ -176,7 +176,7 @@ runs:
     save_to: retail_solo_gemma4_31b_vertex_endpoint
     seed: 444555666
     agent_llm: gemma-4-31b-it-vertex-endpoint
-    num_trials: 1
+    num_trials: 4
     agent_llm_args:
       vertex_project: "53845524870"
       vertex_location: "asia-southeast1"
@@ -206,7 +206,7 @@ runs:
     save_to: retail_solo_gemma4_26b_bf16_cloud_run
     seed: 771001001
     agent_llm: gemma4-26b-cloud-run
-    num_trials: 1
+    num_trials: 4
     agent_llm_args:
       vertex_openai_chat_url: "https://gemma4-26b-bf16-gcreopmlnq-uc.a.run.app"
       vertex_openai_chat_model: "gemma4-26b"
@@ -242,6 +242,7 @@ runs:
     base_run: retail_conv_full_g31fl_low_reasoning_0
     save_to: retail_conv_full_gemma4_26b_bf16_cloud_run
     seed: 881001001
+    num_trials: 4
     agent_llm: gemma4-26b-cloud-run
     agent_llm_args:
       vertex_openai_chat_url: "https://gemma4-26b-bf16-gcreopmlnq-uc.a.run.app"
