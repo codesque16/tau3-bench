@@ -20,8 +20,6 @@ from tau2.config import (
     DEFAULT_BACKCHANNEL_MAX_THRESHOLD_SECONDS,
     DEFAULT_BACKCHANNEL_MIN_THRESHOLD_SECONDS,
     DEFAULT_BACKCHANNEL_POISSON_RATE,
-    DEFAULT_BUFFER_UNTIL_COMPLETE,
-    DEFAULT_FAST_FORWARD_MODE,
     DEFAULT_INTEGRATION_DURATION_SECONDS,
     DEFAULT_INTERRUPTION_CHECK_INTERVAL_SECONDS,
     DEFAULT_LLM_AGENT,
@@ -71,11 +69,9 @@ class AudioNativeConfig(BaseModel):
     """
 
     # Provider selection
-    provider: Literal[
-        "openai", "gemini", "xai", "nova", "qwen", "deepgram", "livekit"
-    ] = Field(
+    provider: Literal["openai", "gemini", "xai", "nova", "qwen", "livekit"] = Field(
         default=DEFAULT_AUDIO_NATIVE_PROVIDER,
-        description="Audio native API provider: 'openai' (OpenAI Realtime), 'gemini' (Gemini Live), 'xai' (xAI Grok Voice Agent), 'nova' (Amazon Nova Sonic), 'qwen' (Alibaba Qwen Omni), 'deepgram' (Deepgram Voice Agent), or 'livekit' (LiveKit cascaded STT→LLM→TTS)",
+        description="Audio native API provider: 'openai' (OpenAI Realtime), 'gemini' (Gemini Live), 'xai' (xAI Grok Voice Agent), 'nova' (Amazon Nova Sonic), 'qwen' (Alibaba Qwen Omni), or 'livekit' (LiveKit cascaded STT→LLM→TTS)",
     )
 
     # Cascaded config (for livekit provider)
@@ -156,14 +152,6 @@ class AudioNativeConfig(BaseModel):
     )
 
     # Agent behavior
-    buffer_until_complete: bool = Field(
-        default=DEFAULT_BUFFER_UNTIL_COMPLETE,
-        description="Buffer audio until complete utterance (OpenAI only)",
-    )
-    fast_forward_mode: bool = Field(
-        default=DEFAULT_FAST_FORWARD_MODE,
-        description="Skip wall-clock waiting when enough audio is buffered (OpenAI only)",
-    )
     use_xml_prompt: bool = Field(
         default=False,
         description="Use XML tags in system prompt. Defaults to False (plain text) for all providers.",

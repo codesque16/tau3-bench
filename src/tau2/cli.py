@@ -244,11 +244,9 @@ def add_run_args(parser):
     parser.add_argument(
         "--audio-native-provider",
         type=str,
-        choices=["openai", "gemini", "xai"],
+        choices=["openai", "gemini", "xai", "livekit"],
         default=DEFAULT_AUDIO_NATIVE_PROVIDER,
-        help=f"Audio native API provider. 'openai' uses OpenAI Realtime API, "
-        f"'gemini' uses Google Gemini Live API, 'xai' uses xAI Grok Voice Agent API. "
-        f"Default is '{DEFAULT_AUDIO_NATIVE_PROVIDER}'.",
+        help=f"Audio native API provider. Default is '{DEFAULT_AUDIO_NATIVE_PROVIDER}'.",
     )
     parser.add_argument(
         "--cascaded-config",

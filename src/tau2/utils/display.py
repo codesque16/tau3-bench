@@ -362,14 +362,14 @@ class ConsoleDisplay:
             audio_table.add_row(
                 "Wait (other):",
                 f"{anc.wait_to_respond_threshold_other_seconds}s",
-                "Fast Forward:",
-                f"{anc.fast_forward_mode}",
+                "",
+                "",
             )
             audio_table.add_row(
                 "Wait (self):",
                 f"{anc.wait_to_respond_threshold_self_seconds}s",
-                "Buffer Complete:",
-                f"{anc.buffer_until_complete}",
+                "",
+                "",
             )
             audio_table.add_row(
                 "Yield (interrupted):",
@@ -1417,14 +1417,14 @@ class ConsoleDisplay:
             audio_table.add_row(
                 "Wait (other):",
                 f"{anc.wait_to_respond_threshold_other_seconds}s",
-                "Fast Forward:",
-                f"{anc.fast_forward_mode}",
+                "",
+                "",
             )
             audio_table.add_row(
                 "Wait (self):",
                 f"{anc.wait_to_respond_threshold_self_seconds}s",
-                "Buffer Complete:",
-                f"{anc.buffer_until_complete}",
+                "",
+                "",
             )
             audio_table.add_row(
                 "Yield (interrupted):",
