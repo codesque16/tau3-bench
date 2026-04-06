@@ -203,7 +203,10 @@ runs:
   # ``TAU2_VLLM_MIRROR_CHAT_TEMPLATE_KWARGS_EXTRA_BODY=1`` to duplicate into ``extra_body``.
   retail_solo_gemma4_26b_bf16_cloud_run:
     base_run: retail_solo_full_g31fl_low_reasoning_0
-    save_to: retail_solo_gemma4_26b_bf16_cloud_run
+    # Stamped dir from fresh: true; fresh: false avoids a new suffix so resume hits the same path.
+    # For a brand-new run later: save_to: retail_solo_gemma4_26b_bf16_cloud_run and fresh: true.
+    save_to: retail_solo_gemma4_26b_bf16_cloud_run_04_06_11_39_20
+    fresh: false
     seed: 771001001
     agent_llm: gemma4-26b-cloud-run
     num_trials: 4
@@ -229,8 +232,12 @@ runs:
 
   retail_solo_gemma4_31b_fp8_cloud_run:
     base_run: retail_solo_gemma4_26b_bf16_cloud_run
-    save_to: retail_solo_gemma4_31b_fp8_cloud_run
+    # Stamped dir from fresh: true; fresh: false avoids a new suffix so resume hits the same path.
+    # For a brand-new run later: save_to: retail_solo_gemma4_31b_fp8_cloud_run and fresh: true.
+    save_to: retail_solo_gemma4_31b_fp8_cloud_run_04_06_11_20_19
+    fresh: false
     seed: 773003003
+    max_concurrency: 4
     agent_llm: gemma4-31b-fp8-cloud-run
     agent_llm_args:
       vertex_openai_chat_url: "https://gemma4-31b-fp8-gcreopmlnq-uc.a.run.app"
@@ -258,6 +265,7 @@ runs:
   retail_conv_full_gemma4_26b_fp8_cloud_run:
     base_run: retail_conv_full_gemma4_26b_bf16_cloud_run
     save_to: retail_conv_full_gemma4_26b_fp8_cloud_run
+    fresh: true
     seed: 882002002
     agent_llm: gemma4-26b-fp8-cloud-run
     agent_llm_args:
@@ -267,7 +275,9 @@ runs:
   retail_conv_full_gemma4_31b_fp8_cloud_run:
     base_run: retail_conv_full_gemma4_26b_bf16_cloud_run
     save_to: retail_conv_full_gemma4_31b_fp8_cloud_run
+    fresh: true
     seed: 883003003
+    max_concurrency: 4
     agent_llm: gemma4-31b-fp8-cloud-run
     agent_llm_args:
       vertex_openai_chat_url: "https://gemma4-31b-fp8-gcreopmlnq-uc.a.run.app"
