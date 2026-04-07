@@ -21,24 +21,24 @@ from tau2.data_model.tasks import Action, Task
 from tau2.environment.tool import Tool, as_tool
 from tau2.utils.llm_utils import generate
 
-AGENT_INSTRUCTION = """
-You are a customer service agent that helps the user according to the <policy> provided below.
-In each turn you can either:
-- Send a message to the user.
-- Make a tool call.
-You cannot do both at the same time.
+# AGENT_INSTRUCTION = """
+# You are a customer service agent that helps the user according to the <policy> provided below.
+# In each turn you can either:
+# - Send a message to the user.
+# - Make a tool call.
+# You cannot do both at the same time.
 
-Try to be helpful and always follow the policy. Always make sure you generate valid JSON only.
-""".strip()
+# Try to be helpful and always follow the policy. Always make sure you generate valid JSON only.
+# """.strip()
 
-SYSTEM_PROMPT = """
-<instructions>
-{agent_instruction}
-</instructions>
-<policy>
-{domain_policy}
-</policy>
-""".strip()
+# SYSTEM_PROMPT = """
+# <instructions>
+# {agent_instruction}
+# </instructions>
+# <policy>
+# {domain_policy}
+# </policy>
+# """.strip()
 
 
 class LLMAgentState(BaseModel):
@@ -77,9 +77,10 @@ class LLMAgent(
 
     @property
     def system_prompt(self) -> str:
-        return SYSTEM_PROMPT.format(
-            domain_policy=self.domain_policy, agent_instruction=AGENT_INSTRUCTION
-        )
+        # return SYSTEM_PROMPT.format(
+        #     domain_policy=self.domain_policy, agent_instruction=AGENT_INSTRUCTION
+        # )
+        return self.domain_policy
 
     def get_init_state(
         self, message_history: Optional[list[Message]] = None

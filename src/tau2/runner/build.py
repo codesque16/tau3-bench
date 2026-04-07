@@ -23,11 +23,12 @@ from tau2.data_model.simulation import (
 )
 from tau2.data_model.tasks import Task
 from tau2.data_model.voice import SpeechComplexity, SynthesisConfig, VoiceSettings
+from tau2.domains.airline.utils import AIRLINE_POLICY_SOLO_PATH
+from tau2.domains.retail.utils import RETAIL_POLICY_SOLO_PATH
 from tau2.environment.environment import Environment
 from tau2.orchestrator.full_duplex_orchestrator import FullDuplexOrchestrator
 from tau2.orchestrator.orchestrator import Orchestrator
 from tau2.registry import registry
-from tau2.domains.retail.utils import RETAIL_POLICY_SOLO_PATH
 from tau2.user.user_simulator import DummyUser, UserSimulator
 from tau2.user.user_simulator_base import FullDuplexUser, HalfDuplexUser
 from tau2.user_simulation_voice_presets import (
@@ -376,6 +377,17 @@ def build_text_orchestrator(
     if assistant_solo_mode and domain == "retail":
         env_kwargs = dict(env_kwargs)
         env_kwargs["policy_path"] = RETAIL_POLICY_SOLO_PATH
+    if assistant_solo_mode and domain == "airline":
+        env_kwargs = dict(env_kwargs)
+        env_kwargs["policy_path"] = AIRLINE_POLICY_SOLO_PATH
+    rpp = getattr(config, "retail_policy_path", None)
+    if domain == "retail" and rpp:
+        env_kwargs = dict(env_kwargs)
+        env_kwargs["policy_path"] = Path(str(rpp)).expanduser().resolve()
+    app = getattr(config, "airline_policy_path", None)
+    if domain == "airline" and app:
+        env_kwargs = dict(env_kwargs)
+        env_kwargs["policy_path"] = Path(str(app)).expanduser().resolve()
 
     environment = build_environment(domain, solo_mode=solo_mode, env_kwargs=env_kwargs)
 

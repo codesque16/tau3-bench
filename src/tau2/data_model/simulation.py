@@ -302,6 +302,28 @@ class BaseRunConfig(BaseModel):
             default=None,
         ),
     ]
+    retail_policy_path: Annotated[
+        Optional[str],
+        Field(
+            description=(
+                "When set for retail domain runs, load agent policy from this file path "
+                "(GEPA / programmatic policy swaps). Overrides assistant_solo_mode solo policy "
+                "when both are set."
+            ),
+            default=None,
+        ),
+    ]
+    airline_policy_path: Annotated[
+        Optional[str],
+        Field(
+            description=(
+                "When set for airline domain runs, load agent policy from this file path "
+                "(GEPA / programmatic policy swaps). Overrides assistant_solo_mode solo policy "
+                "when both are set."
+            ),
+            default=None,
+        ),
+    ]
 
     # ---- User simulator ----
     llm_user: Annotated[

@@ -1,0 +1,73 @@
+# Standalone config: solo Cloud Run Gemma 26B FP8 with ``policy_solo_corrected.md``.
+# Run from repository root (``tau3-bench-fork/``) so ``retail_policy_path`` resolves:
+#   cd tau3-bench-fork
+#   uv run tau2config --config examples/retail_solo_corrected_policy.yaml --run-ids retail_solo_gemma4_26b_fp8_cloud_run_policy_solo_corrected
+#
+# This file duplicates the ``base_run`` chain so it does not depend on ``retail_vertex_text.yaml``.
+
+run_concurrency: 4
+
+runs:
+  retail_solo_full_g31fl_low_reasoning_0:
+    domain: retail
+    assistant_solo_mode: true
+    num_trials: 4
+    trial_concurrency: 4
+    max_concurrency: 10
+    verbose_logs: true
+    seed: 2342342
+    save_to: retail_solo_corrected_policy_chain_base
+    fresh: true
+    agent: vertex_agent
+    agent_llm: gemini-3.1-flash-lite-preview
+    agent_llm_args:
+      temperature: 0
+      reasoning_level: low
+      max_tokens: 8192
+    agent_pricing:
+      input_cost_per_million: 0.25
+      cached_input_cost_per_million: 0.03
+      output_cost_per_million: 1.50
+
+  retail_solo_gemma4_26b_bf16_cloud_run:
+    base_run: retail_solo_full_g31fl_low_reasoning_0
+    save_to: retail_solo_corrected_policy_chain_bf16
+    fresh: true
+    seed: 771001001
+    agent_llm: gemma4-26b-cloud-run
+    num_trials: 4
+    agent_llm_args:
+      vertex_openai_chat_url: "https://gemma4-26b-bf16-gcreopmlnq-uc.a.run.app"
+      vertex_openai_chat_model: "gemma4-26b"
+      vertex_endpoint_parameters:
+        temperature: 0
+        max_tokens: 8192
+        top_p: 0.95
+        skip_special_tokens: false
+        chat_template_kwargs:
+          enable_thinking: true
+
+  retail_solo_gemma4_26b_fp8_cloud_run:
+    base_run: retail_solo_gemma4_26b_bf16_cloud_run
+    save_to: retail_solo_corrected_policy_chain_fp8
+    fresh: true
+    num_trials: 4
+    seed: 772002002
+    agent_llm: gemma4-26b-fp8-cloud-run
+    max_concurrency: 10
+    agent_llm_args:
+      vertex_openai_chat_url: "https://gemma4-26b-fp8-gcreopmlnq-uc.a.run.app"
+      vertex_openai_chat_model: "gemma4-26b-fp8"
+      vertex_endpoint_parameters:
+        temperature: 0
+        max_tokens: 8192
+        top_p: 0.95
+        skip_special_tokens: false
+        chat_template_kwargs:
+          enable_thinking: true
+
+  retail_solo_gemma4_26b_fp8_cloud_run_policy_solo_corrected:
+    base_run: retail_solo_gemma4_26b_fp8_cloud_run
+    save_to: retail_solo_gemma4_26b_fp8_cloud_run_policy_solo_corrected
+    fresh: true
+    retail_policy_path: data/tau2/domains/retail/policy_solo_corrected.md

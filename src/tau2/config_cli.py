@@ -168,7 +168,13 @@ def _select_runs(
             selected.append((run_id, run_cfg))
 
     if requested_ids is not None and not selected:
-        raise ValueError("No matching runs found for selected run IDs.")
+        available = [rid for rid, _ in runs]
+        preview = ", ".join(available[:25])
+        more = f" … (+{len(available) - 25} more)" if len(available) > 25 else ""
+        raise ValueError(
+            f"No matching runs found for selected run IDs {sorted(requested_ids)!r}. "
+            f"Keys under `runs:` in this config include: {preview}{more}"
+        )
     if not selected:
         raise ValueError("No enabled runs found in config.")
     return selected
@@ -256,6 +262,8 @@ def _build_run_config(cfg: dict[str, Any]) -> TextRunConfig | VoiceRunConfig:
         retrieval_config=cfg.get("retrieval_config"),
         retrieval_config_kwargs=cfg.get("retrieval_config_kwargs"),
         fresh=bool(cfg.get("fresh", False)),
+        retail_policy_path=cfg.get("retail_policy_path"),
+        airline_policy_path=cfg.get("airline_policy_path"),
     )
 
     mode = cfg.get("mode")
@@ -343,6 +351,43 @@ def _execute_yaml_run(run_id: str, merged_cfg: dict[str, Any]) -> None:
     run_config = _build_run_config(merged_cfg)
     print(f"[tau2config] Running '{run_id}'...")
     run_domain(run_config)
+
+
+def load_yaml_and_prepare_run(
+    config_path: str | Path,
+    run_id: str,
+    *,
+    load_env: bool = True,
+) -> dict[str, Any]:
+    """Load a multi-run YAML file and return the merged run dict for ``run_id`` (same as the CLI).
+
+    Use this from GEPA or other Python callers to mirror:
+
+        uv run tau2config --config <path> --run-ids <run_id>
+
+    Args:
+        config_path: Path to the YAML config file.
+        run_id: Run key under ``runs:`` (or ``default`` for single-root configs).
+        load_env: If True, load ``.env`` from cwd and from the YAML parent directory.
+
+    Returns:
+        Merged configuration mapping ready for :func:`_build_run_config`.
+    """
+    cfg_path = Path(config_path).expanduser().resolve()
+    if load_env:
+        load_dotenv()
+        load_dotenv(cfg_path.parent / ".env")
+
+    cfg = _load_yaml_config(cfg_path)
+    root_defaults, run_entries = _split_root_and_runs(cfg)
+    all_runs = _runs_map_from_entries(run_entries)
+    selected = _select_runs(cfg, run_entries, [str(run_id)])
+    if not selected:
+        raise ValueError(f"No run matched run_id={run_id!r} in {cfg_path}")
+    rid, run_cfg = selected[0]
+    return _prepare_merged_cfg_for_run(
+        rid, run_cfg, all_runs, root_defaults, cfg_path
+    )
 
 
 def main() -> None:

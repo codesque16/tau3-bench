@@ -46,6 +46,8 @@ Use the correct `ToolType` — this affects evaluation:
 
 If the domain does NOT support solo mode, raise `ValueError("Solo mode not supported for <domain>")` in `get_environment()`. Do not silently ignore it.
 
+For **assistant solo** (`assistant_solo_mode` with `dummy_user`), retail loads `policy_solo.md` and airline loads `policy_solo.md` unless overridden via `retail_policy_path` / `airline_policy_path` in the run config.
+
 ### Data Files
 
 Domain data lives in `data/tau2/domains/<name>/`. Be careful modifying `db.json`/`db.toml` and `tasks.json` — the framework depends on these at runtime. Always run `tau2 check-data` after changing data files.

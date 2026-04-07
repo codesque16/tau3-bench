@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 from loguru import logger
 
-from tau2.agent.llm_agent import AGENT_INSTRUCTION, SYSTEM_PROMPT, LLMAgent
+from tau2.agent.llm_agent import LLMAgent
 from tau2.data_model.message import AssistantMessage, Message, ToolCall, ToolMessage
 from tau2.environment.tool import Tool
 from tau2.utils.genai_logfire import (
@@ -56,12 +56,6 @@ class VertexAgent(LLMAgent):
         )
         self._genai_client = None
         self._thought_signatures: dict[str, bytes] = {}
-
-    @property
-    def system_prompt(self) -> str:
-        return SYSTEM_PROMPT.format(
-            domain_policy=self.domain_policy, agent_instruction=AGENT_INSTRUCTION
-        )
 
     def _get_client(self):
         if self._genai_client is not None:

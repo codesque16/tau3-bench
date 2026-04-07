@@ -1,6 +1,6 @@
 # Copyright Sierra
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 from tau2.data_model.tasks import Task
 from tau2.domains.airline.data_model import FlightDB
@@ -17,13 +17,15 @@ from tau2.utils import load_file
 def get_environment(
     db: Optional[FlightDB] = None,
     solo_mode: bool = False,
+    policy_path: Optional[Union[str, Path]] = None,
 ) -> Environment:
     if solo_mode:
         raise ValueError("Airline domain does not support solo mode")
     if db is None:
         db = FlightDB.load(AIRLINE_DB_PATH)
     tools = AirlineTools(db)
-    with open(AIRLINE_POLICY_PATH, "r") as fp:
+    resolved_policy = Path(policy_path) if policy_path is not None else AIRLINE_POLICY_PATH
+    with open(resolved_policy, "r") as fp:
         policy = fp.read()
     return Environment(
         domain_name="airline",

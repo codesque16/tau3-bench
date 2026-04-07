@@ -1,65 +1,63 @@
 # Optional: select which runs to execute from this file.
 # Runs may set `base_run: <another_run_id>` to inherit that template and override/add keys (deep merge).
 # Chains are supported (base_run pointing to a run that also has base_run). Cycles are rejected.
-# Use "retail_assistant_solo" for one-shot assistant (ticket in first user turn, policy_solo.md).
+# Use ``assistant_solo_mode: true`` for one-shot assistant (dummy user, first user turn = ticket).
+# Conversation loads ``data/tau2/domains/airline/policy.md``. Solo (``assistant_solo_mode: true``) loads
+# ``policy_solo.md`` by default; override with YAML key ``airline_policy_path`` (same idea as ``retail_policy_path``).
 # Optional root key: run_concurrency: N — run up to N selected YAML runs in parallel (default 1). Override: --run-concurrency N.
 #
 # Vertex dedicated-endpoint solos (from repo root, after ``cd tau3-bench-fork``):
-#   uv run tau2config --config examples/retail_vertex_text.yaml --run-ids retail_solo_qwen35_9b_vertex_endpoint
-#   uv run tau2config --config examples/retail_vertex_text.yaml --run-ids retail_solo_gemma4_31b_vertex_endpoint
-#   uv run tau2config --config examples/retail_vertex_text.yaml --run-ids retail_solo_qwen35_9b_vertex_endpoint retail_solo_gemma4_31b_vertex_endpoint
+#   uv run tau2config --config examples/airline_vertex_text.yaml --run-ids airline_solo_qwen35_9b_vertex_endpoint
+#   uv run tau2config --config examples/airline_vertex_text.yaml --run-ids airline_solo_gemma4_31b_vertex_endpoint
+#   uv run tau2config --config examples/airline_vertex_text.yaml --run-ids airline_solo_qwen35_9b_vertex_endpoint airline_solo_gemma4_31b_vertex_endpoint
 #
 # OpenAI-compatible vLLM on Cloud Run (identity token auth, same as ``gcloud auth print-identity-token`` audience = service URL):
-#   uv run tau2config --config examples/retail_vertex_text.yaml --run-ids retail_solo_gemma4_26b_bf16_cloud_run
-#   # optional: retail_solo_gemma4_26b_fp8_cloud_run retail_solo_gemma4_31b_fp8_cloud_run
+#   uv run tau2config --config examples/airline_vertex_text.yaml --run-ids airline_solo_gemma4_26b_bf16_cloud_run
+#   # optional: airline_solo_gemma4_26b_fp8_cloud_run airline_solo_gemma4_31b_fp8_cloud_run
 # Conversation (agent on Cloud Run Gemma, user sim on Vertex Gemini):
-#   uv run tau2config --config examples/retail_vertex_text.yaml --run-ids retail_conv_full_gemma4_26b_bf16_cloud_run
-#   # optional: retail_conv_full_gemma4_26b_fp8_cloud_run retail_conv_full_gemma4_31b_fp8_cloud_run
-#
-# Solo with ``policy_solo_corrected.md`` (same stack as ``retail_solo_gemma4_26b_fp8_cloud_run``):
-#   uv run tau2config --config examples/retail_vertex_text.yaml --run-ids retail_solo_gemma4_26b_fp8_cloud_run_policy_solo_corrected
-# Or standalone: ``examples/retail_solo_corrected_policy.yaml`` (includes full ``base_run`` chain).
+#   uv run tau2config --config examples/airline_vertex_text.yaml --run-ids airline_conv_full_gemma4_26b_bf16_cloud_run
+#   # optional: airline_conv_full_gemma4_26b_fp8_cloud_run airline_conv_full_gemma4_31b_fp8_cloud_run
 #
 # Keep-warm ping (from repo ``scripts/gcloud_scripts``): same run ids as keys — see ``vertex_warm_endpoints.yaml`` or
-#   ./vertex_endpoint_warm.sh --config ../../tau3-bench-fork/examples/retail_vertex_text.yaml retail_solo_gemma4_31b_vertex_endpoint
+#   ./vertex_endpoint_warm.sh --config ../../tau3-bench-fork/examples/airline_vertex_text.yaml airline_solo_gemma4_31b_vertex_endpoint
 
 run_concurrency: 6
 # enabled_run_ids:
-#  - "retail_conv_full_g31fl_low_reasoning_0"
-#  - "retail_conv_full_g31fl_medium_reasoning_0"
-#  - "retail_conv_full_g31fl_high_reasoning_0"
-#  - "retail_solo_full_g31fl_low_reasoning_0"
-#  - "retail_solo_full_g31fl_medium_reasoning_0"
-#  - "retail_solo_full_g31fl_high_reasoning_0"
-#  - "retail_conv_full_g31fl_low_reasoning_0_3"
-#  - "retail_conv_full_g31fl_medium_reasoning_0_3"
-#  - "retail_conv_full_g31fl_high_reasoning_0_3"
-#  - "retail_solo_full_g31fl_low_reasoning_0_3"
-#  - "retail_solo_full_g31fl_medium_reasoning_0_3"
-#  - "retail_solo_full_g31fl_high_reasoning_0_3"
-#  - "retail_conv_full_g31p_low_reasoning_0"
-#  - "retail_conv_full_g31p_medium_reasoning_0"
-#  - "retail_conv_full_g31p_high_reasoning_0"
-#  - "retail_solo_full_g31p_low_reasoning_0"
-#  - "retail_solo_full_g31p_medium_reasoning_0"
-#  - "retail_solo_full_g31p_high_reasoning_0"
-#  - "retail_conv_full_g31p_low_reasoning_0_3"
-#  - "retail_conv_full_g31p_medium_reasoning_0_3"
-#  - "retail_conv_full_g31p_high_reasoning_0_3"
-#  - "retail_solo_full_g31p_low_reasoning_0_3"
-#  - "retail_solo_full_g31p_medium_reasoning_0_3"
-#  - "retail_solo_full_g31p_high_reasoning_0_3"
+#  - "airline_conv_full_g31fl_low_reasoning_0"
+#  - "airline_conv_full_g31fl_medium_reasoning_0"
+#  - "airline_conv_full_g31fl_high_reasoning_0"
+#  - "airline_solo_full_g31fl_low_reasoning_0"
+#  - "airline_solo_full_g31fl_medium_reasoning_0"
+#  - "airline_solo_full_g31fl_high_reasoning_0"
+#  - "airline_conv_full_g31fl_low_reasoning_0_3"
+#  - "airline_conv_full_g31fl_medium_reasoning_0_3"
+#  - "airline_conv_full_g31fl_high_reasoning_0_3"
+#  - "airline_solo_full_g31fl_low_reasoning_0_3"
+#  - "airline_solo_full_g31fl_medium_reasoning_0_3"
+#  - "airline_solo_full_g31fl_high_reasoning_0_3"
+#  - "airline_conv_full_g31p_low_reasoning_0"
+#  - "airline_conv_full_g31p_medium_reasoning_0"
+#  - "airline_conv_full_g31p_high_reasoning_0"
+#  - "airline_solo_full_g31p_low_reasoning_0"
+#  - "airline_solo_full_g31p_medium_reasoning_0"
+#  - "airline_solo_full_g31p_high_reasoning_0"
+#  - "airline_conv_full_g31p_low_reasoning_0_3"
+#  - "airline_conv_full_g31p_medium_reasoning_0_3"
+#  - "airline_conv_full_g31p_high_reasoning_0_3"
+#  - "airline_solo_full_g31p_low_reasoning_0_3"
+#  - "airline_solo_full_g31p_medium_reasoning_0_3"
+#  - "airline_solo_full_g31p_high_reasoning_0_3"
 
 runs:
   # --- Conversation (user simulator) templates ---
-  retail_conv_full_g31fl_low_reasoning_0:
-    domain: retail
+  airline_conv_full_g31fl_low_reasoning_0:
+    domain: airline
     num_trials: 4
     trial_concurrency: 4
     max_concurrency: 10
     verbose_logs: true
     seed: 626729
-    save_to: retail_conv_full_g31fl_low_reasoning_0
+    save_to: airline_conv_full_g31fl_low_reasoning_0
     fresh: true
     agent: vertex_agent
     agent_llm: gemini-3.1-flash-lite-preview
@@ -79,57 +77,57 @@ runs:
       cached_input_cost_per_million: 0.20
       output_cost_per_million: 12.00
 
-  retail_conv_full_g31fl_low_reasoning_0_3:
-    base_run: retail_conv_full_g31fl_low_reasoning_0
-    save_to: retail_conv_full_g31fl_low_reasoning_0_3
+  airline_conv_full_g31fl_low_reasoning_0_3:
+    base_run: airline_conv_full_g31fl_low_reasoning_0
+    save_to: airline_conv_full_g31fl_low_reasoning_0_3
     seed: 312312312
     agent_llm_args:
       temperature: 0.3
 
-  retail_conv_full_g31fl_medium_reasoning_0:
-    base_run: retail_conv_full_g31fl_low_reasoning_0
-    save_to: retail_conv_full_g31fl_medium_reasoning_0
+  airline_conv_full_g31fl_medium_reasoning_0:
+    base_run: airline_conv_full_g31fl_low_reasoning_0
+    save_to: airline_conv_full_g31fl_medium_reasoning_0
     seed: 8790456342
     agent_llm_args:
       reasoning_level: medium
 
-  retail_conv_full_g31fl_medium_reasoning_0_3:
-    base_run: retail_conv_full_g31fl_medium_reasoning_0
-    save_to: retail_conv_full_g31fl_medium_reasoning_0_3
+  airline_conv_full_g31fl_medium_reasoning_0_3:
+    base_run: airline_conv_full_g31fl_medium_reasoning_0
+    save_to: airline_conv_full_g31fl_medium_reasoning_0_3
     seed: 5348087
     agent_llm_args:
       temperature: 0.3
 
-  retail_conv_full_g31fl_high_reasoning_0:
-    base_run: retail_conv_full_g31fl_low_reasoning_0
-    save_to: retail_conv_full_g31fl_high_reasoning_0
+  airline_conv_full_g31fl_high_reasoning_0:
+    base_run: airline_conv_full_g31fl_low_reasoning_0
+    save_to: airline_conv_full_g31fl_high_reasoning_0
     seed: 7575677567
     agent_llm_args:
       reasoning_level: high
 
-  retail_conv_full_g31fl_high_reasoning_0_3:
-    base_run: retail_conv_full_g31fl_high_reasoning_0
-    save_to: retail_conv_full_g31fl_high_reasoning_0_3
+  airline_conv_full_g31fl_high_reasoning_0_3:
+    base_run: airline_conv_full_g31fl_high_reasoning_0
+    save_to: airline_conv_full_g31fl_high_reasoning_0_3
     seed: 656345634
     agent_llm_args:
       temperature: 0.3
 
-  retail_subset:
-    base_run: retail_conv_full_g31fl_low_reasoning_0
+  airline_subset:
+    base_run: airline_conv_full_g31fl_low_reasoning_0
     max_concurrency: 20
-    save_to: retail_subset
+    save_to: airline_subset
     task_ids: ["0", "1", "2", "3", "4"]
 
-  # --- Assistant solo (dummy user, policy_solo.md) ---
-  retail_solo_full_g31fl_low_reasoning_0:
-    domain: retail
+  # --- Assistant solo (dummy user; ``policy_solo.md`` by default) ---
+  airline_solo_full_g31fl_low_reasoning_0:
+    domain: airline
     assistant_solo_mode: true
     num_trials: 4
     trial_concurrency: 4
     max_concurrency: 10
     verbose_logs: true
     seed: 2342342
-    save_to: retail_solo_full_g31fl_low_reasoning_0
+    save_to: airline_solo_full_g31fl_low_reasoning_0
     fresh: true
     agent: vertex_agent
     agent_llm: gemini-3.1-flash-lite-preview
@@ -148,9 +146,9 @@ runs:
   # ``vertex_http_predict_base`` to build ``https://{endpoint_id}.{location}-{project}.prediction.vertexai.goog``.
   # Put sampling / vLLM knobs under ``vertex_endpoint_parameters`` (merged into ``instances[0]``);
   # ``agent_llm_args.temperature`` still works but nesting here keeps endpoint wiring obvious.
-  retail_solo_qwen35_9b_vertex_endpoint:
-    base_run: retail_solo_full_g31fl_low_reasoning_0
-    save_to: retail_solo_qwen35_9b_vertex_endpoint
+  airline_solo_qwen35_9b_vertex_endpoint:
+    base_run: airline_solo_full_g31fl_low_reasoning_0
+    save_to: airline_solo_qwen35_9b_vertex_endpoint
     seed: 111222333
     agent_llm: qwen3-5-9b-vertex-endpoint
     agent_llm_args:
@@ -177,9 +175,9 @@ runs:
   # https://docs.vllm.ai/projects/recipes/en/latest/Google/Gemma4.html#thinking-reasoning-mode
   # Optional ``agent_llm_args.vertex_include_reasoning_in_request`` (default true): when false,
   # ``:predict`` history uses body-only ``content``; Logfire Model Run still shows thoughts.
-  retail_solo_gemma4_31b_vertex_endpoint:
-    base_run: retail_solo_full_g31fl_low_reasoning_0
-    save_to: retail_solo_gemma4_31b_vertex_endpoint
+  airline_solo_gemma4_31b_vertex_endpoint:
+    base_run: airline_solo_full_g31fl_low_reasoning_0
+    save_to: airline_solo_gemma4_31b_vertex_endpoint
     seed: 444555666
     agent_llm: gemma-4-31b-it-vertex-endpoint
     num_trials: 4
@@ -207,12 +205,11 @@ runs:
   # raw ``curl`` to ``/v1/chat/completions``). For OpenAI-SDK-style ``extra_body`` only, nest it
   # under ``vertex_endpoint_parameters.extra_body``; or set env
   # ``TAU2_VLLM_MIRROR_CHAT_TEMPLATE_KWARGS_EXTRA_BODY=1`` to duplicate into ``extra_body``.
-  retail_solo_gemma4_26b_bf16_cloud_run:
-    base_run: retail_solo_full_g31fl_low_reasoning_0
-    # Stamped dir from fresh: true; fresh: false avoids a new suffix so resume hits the same path.
-    # For a brand-new run later: save_to: retail_solo_gemma4_26b_bf16_cloud_run and fresh: true.
-    save_to: retail_solo_gemma4_26b_bf16_cloud_run_04_06_11_39_20
-    fresh: false
+  airline_solo_gemma4_26b_bf16_cloud_run:
+    base_run: airline_solo_full_g31fl_low_reasoning_0
+    # ``save_to`` / ``fresh``: set ``fresh: true`` for a new stamped directory under ``data/simulations/``.
+    save_to: airline_solo_gemma4_26b_bf16_cloud_run
+    fresh: true
     seed: 771001001
     agent_llm: gemma4-26b-cloud-run
     num_trials: 4
@@ -227,9 +224,9 @@ runs:
         chat_template_kwargs:
           enable_thinking: true
 
-  retail_solo_gemma4_26b_fp8_cloud_run:
-    base_run: retail_solo_gemma4_26b_bf16_cloud_run
-    save_to: retail_solo_gemma4_26b_fp8_cloud_run
+  airline_solo_gemma4_26b_fp8_cloud_run:
+    base_run: airline_solo_gemma4_26b_bf16_cloud_run
+    save_to: airline_solo_gemma4_26b_fp8_cloud_run
     fresh: true
     num_trials: 4
     seed: 772002002
@@ -246,26 +243,11 @@ runs:
         chat_template_kwargs:
           enable_thinking: true
 
-  # Same stack as ``retail_solo_gemma4_26b_fp8_cloud_run`` but agent policy from ``policy_mermaid_solo.md``.
-  # ``retail_policy_path`` is resolved from the process cwd (run ``tau2config`` from ``tau3-bench-fork/``).
-  retail_solo_gemma4_26b_fp8_cloud_run_mermaid_policy:
-    base_run: retail_solo_gemma4_26b_fp8_cloud_run
-    save_to: retail_solo_gemma4_26b_fp8_cloud_run_mermaid_policy
-    fresh: true
-    retail_policy_path: data/tau2/domains/retail/policy_mermaid_solo.md
-
-  # Same as ``retail_solo_gemma4_26b_fp8_cloud_run`` but policy from ``policy_solo_corrected.md``.
-  retail_solo_gemma4_26b_fp8_cloud_run_policy_solo_corrected:
-    base_run: retail_solo_gemma4_26b_fp8_cloud_run
-    save_to: retail_solo_gemma4_26b_fp8_cloud_run_policy_solo_corrected
-    fresh: true
-    retail_policy_path: data/tau2/domains/retail/policy_solo_corrected.md
-
-  retail_solo_gemma4_31b_fp8_cloud_run:
-    base_run: retail_solo_gemma4_26b_bf16_cloud_run
+  airline_solo_gemma4_31b_fp8_cloud_run:
+    base_run: airline_solo_gemma4_26b_bf16_cloud_run
     # Stamped dir from fresh: true; fresh: false avoids a new suffix so resume hits the same path.
-    # For a brand-new run later: save_to: retail_solo_gemma4_31b_fp8_cloud_run and fresh: true.
-    save_to: retail_solo_gemma4_31b_fp8_cloud_run_04_06_11_20_19
+    # For a brand-new run later: save_to: airline_solo_gemma4_31b_fp8_cloud_run and fresh: true.
+    save_to: airline_solo_gemma4_31b_fp8_cloud_run_04_06_11_20_19
     fresh: false
     seed: 773003003
     max_concurrency: 4
@@ -276,9 +258,9 @@ runs:
       vertex_openai_chat_model: "gemma4"
 
   # --- Conversation + Cloud Run Gemma (agent); user simulator stays ``vertex_user_simulator`` / Gemini ---
-  retail_conv_full_gemma4_26b_bf16_cloud_run:
-    base_run: retail_conv_full_g31fl_low_reasoning_0
-    save_to: retail_conv_full_gemma4_26b_bf16_cloud_run
+  airline_conv_full_gemma4_26b_bf16_cloud_run:
+    base_run: airline_conv_full_g31fl_low_reasoning_0
+    save_to: airline_conv_full_gemma4_26b_bf16_cloud_run
     seed: 881001001
     num_trials: 4
     agent_llm: gemma4-26b-cloud-run
@@ -293,9 +275,9 @@ runs:
         chat_template_kwargs:
           enable_thinking: true
 
-  retail_conv_full_gemma4_26b_fp8_cloud_run:
-    base_run: retail_conv_full_gemma4_26b_bf16_cloud_run
-    save_to: retail_conv_full_gemma4_26b_fp8_cloud_run
+  airline_conv_full_gemma4_26b_fp8_cloud_run:
+    base_run: airline_conv_full_gemma4_26b_bf16_cloud_run
+    save_to: airline_conv_full_gemma4_26b_fp8_cloud_run
     fresh: true
     seed: 882002002
     agent_llm: gemma4-26b-fp8-cloud-run
@@ -303,9 +285,9 @@ runs:
       vertex_openai_chat_url: "https://gemma4-26b-fp8-gcreopmlnq-uc.a.run.app"
       vertex_openai_chat_model: "gemma4-26b-fp8"
 
-  retail_conv_full_gemma4_31b_fp8_cloud_run:
-    base_run: retail_conv_full_gemma4_26b_bf16_cloud_run
-    save_to: retail_conv_full_gemma4_31b_fp8_cloud_run
+  airline_conv_full_gemma4_31b_fp8_cloud_run:
+    base_run: airline_conv_full_gemma4_26b_bf16_cloud_run
+    save_to: airline_conv_full_gemma4_31b_fp8_cloud_run
     fresh: true
     seed: 883003003
     max_concurrency: 4
@@ -314,98 +296,98 @@ runs:
       vertex_openai_chat_url: "https://gemma4-31b-fp8-gcreopmlnq-uc.a.run.app"
       vertex_openai_chat_model: "gemma4"
 
-  retail_solo_full_g31fl_low_reasoning_0_3:
-    base_run: retail_solo_full_g31fl_low_reasoning_0
-    save_to: retail_solo_full_g31fl_low_reasoning_0_3
+  airline_solo_full_g31fl_low_reasoning_0_3:
+    base_run: airline_solo_full_g31fl_low_reasoning_0
+    save_to: airline_solo_full_g31fl_low_reasoning_0_3
     seed: 312312312
     agent_llm_args:
       temperature: 0.3
 
-  retail_solo_full_g31fl_medium_reasoning_0:
-    base_run: retail_solo_full_g31fl_low_reasoning_0
-    save_to: retail_solo_full_g31fl_medium_reasoning_0
+  airline_solo_full_g31fl_medium_reasoning_0:
+    base_run: airline_solo_full_g31fl_low_reasoning_0
+    save_to: airline_solo_full_g31fl_medium_reasoning_0
     seed: 567567567567
     agent_llm_args:
       reasoning_level: medium
 
-  retail_solo_full_g31fl_medium_reasoning_0_3:
-    base_run: retail_solo_full_g31fl_medium_reasoning_0
-    save_to: retail_solo_full_g31fl_medium_reasoning_0_3
+  airline_solo_full_g31fl_medium_reasoning_0_3:
+    base_run: airline_solo_full_g31fl_medium_reasoning_0
+    save_to: airline_solo_full_g31fl_medium_reasoning_0_3
     seed: 23123546
     agent_llm_args:
       temperature: 0.3
 
-  retail_solo_full_g31fl_high_reasoning_0:
-    base_run: retail_solo_full_g31fl_low_reasoning_0
-    save_to: retail_solo_full_g31fl_high_reasoning_0
+  airline_solo_full_g31fl_high_reasoning_0:
+    base_run: airline_solo_full_g31fl_low_reasoning_0
+    save_to: airline_solo_full_g31fl_high_reasoning_0
     seed: 45454534
     agent_llm_args:
       reasoning_level: high
 
-  retail_solo_full_g31fl_high_reasoning_0_3:
-    base_run: retail_solo_full_g31fl_high_reasoning_0
-    save_to: retail_solo_full_g31fl_high_reasoning_0_3
+  airline_solo_full_g31fl_high_reasoning_0_3:
+    base_run: airline_solo_full_g31fl_high_reasoning_0
+    save_to: airline_solo_full_g31fl_high_reasoning_0_3
     seed: 89898989
     agent_llm_args:
       temperature: 0.3
 
-  retail_conv_full_g31p_low_reasoning_0:
-    base_run: retail_conv_full_g31fl_low_reasoning_0
-    save_to: retail_conv_full_g31p_low_reasoning_0
+  airline_conv_full_g31p_low_reasoning_0:
+    base_run: airline_conv_full_g31fl_low_reasoning_0
+    save_to: airline_conv_full_g31p_low_reasoning_0
     agent_llm: gemini-3.1-pro-preview
     seed: 123123123
-  retail_conv_full_g31p_medium_reasoning_0:
-    base_run: retail_conv_full_g31fl_medium_reasoning_0
-    save_to: retail_conv_full_g31p_medium_reasoning_0
+  airline_conv_full_g31p_medium_reasoning_0:
+    base_run: airline_conv_full_g31fl_medium_reasoning_0
+    save_to: airline_conv_full_g31p_medium_reasoning_0
     agent_llm: gemini-3.1-pro-preview
     seed: 456456456
-  retail_conv_full_g31p_high_reasoning_0:
-    base_run: retail_conv_full_g31fl_high_reasoning_0
-    save_to: retail_conv_full_g31p_high_reasoning_0
+  airline_conv_full_g31p_high_reasoning_0:
+    base_run: airline_conv_full_g31fl_high_reasoning_0
+    save_to: airline_conv_full_g31p_high_reasoning_0
     agent_llm: gemini-3.1-pro-preview
     seed: 789789789
-  retail_solo_full_g31p_low_reasoning_0:
-    base_run: retail_solo_full_g31fl_low_reasoning_0
-    save_to: retail_solo_full_g31p_low_reasoning_0
+  airline_solo_full_g31p_low_reasoning_0:
+    base_run: airline_solo_full_g31fl_low_reasoning_0
+    save_to: airline_solo_full_g31p_low_reasoning_0
     agent_llm: gemini-3.1-pro-preview
     seed: 101101101
-  retail_solo_full_g31p_medium_reasoning_0:
-    base_run: retail_solo_full_g31fl_medium_reasoning_0
-    save_to: retail_solo_full_g31p_medium_reasoning_0
+  airline_solo_full_g31p_medium_reasoning_0:
+    base_run: airline_solo_full_g31fl_medium_reasoning_0
+    save_to: airline_solo_full_g31p_medium_reasoning_0
     agent_llm: gemini-3.1-pro-preview
     seed: 121312131
-  retail_solo_full_g31p_high_reasoning_0:
-    base_run: retail_solo_full_g31fl_high_reasoning_0
-    save_to: retail_solo_full_g31p_high_reasoning_0
+  airline_solo_full_g31p_high_reasoning_0:
+    base_run: airline_solo_full_g31fl_high_reasoning_0
+    save_to: airline_solo_full_g31p_high_reasoning_0
     agent_llm: gemini-3.1-pro-preview
     seed: 141514151
-  retail_conv_full_g31p_low_reasoning_0_3:
-    base_run: retail_conv_full_g31p_low_reasoning_0
-    save_to: retail_conv_full_g31p_low_reasoning_0_3
+  airline_conv_full_g31p_low_reasoning_0_3:
+    base_run: airline_conv_full_g31p_low_reasoning_0
+    save_to: airline_conv_full_g31p_low_reasoning_0_3
     agent_llm: gemini-3.1-pro-preview
     seed: 161716171
-  retail_conv_full_g31p_medium_reasoning_0_3:
-    base_run: retail_conv_full_g31p_medium_reasoning_0
-    save_to: retail_conv_full_g31p_medium_reasoning_0_3
+  airline_conv_full_g31p_medium_reasoning_0_3:
+    base_run: airline_conv_full_g31p_medium_reasoning_0
+    save_to: airline_conv_full_g31p_medium_reasoning_0_3
     agent_llm: gemini-3.1-pro-preview
     seed: 181918191
-  retail_conv_full_g31p_high_reasoning_0_3:
-    base_run: retail_conv_full_g31p_high_reasoning_0
-    save_to: retail_conv_full_g31p_high_reasoning_0_3
+  airline_conv_full_g31p_high_reasoning_0_3:
+    base_run: airline_conv_full_g31p_high_reasoning_0
+    save_to: airline_conv_full_g31p_high_reasoning_0_3
     agent_llm: gemini-3.1-pro-preview
     seed: 202120212
-  retail_solo_full_g31p_low_reasoning_0_3:
-    base_run: retail_solo_full_g31p_low_reasoning_0
-    save_to: retail_solo_full_g31p_low_reasoning_0_3
+  airline_solo_full_g31p_low_reasoning_0_3:
+    base_run: airline_solo_full_g31p_low_reasoning_0
+    save_to: airline_solo_full_g31p_low_reasoning_0_3
     agent_llm: gemini-3.1-pro-preview
     seed: 222322232
-  retail_solo_full_g31p_medium_reasoning_0_3:
-    base_run: retail_solo_full_g31p_medium_reasoning_0
-    save_to: retail_solo_full_g31p_medium_reasoning_0_3
+  airline_solo_full_g31p_medium_reasoning_0_3:
+    base_run: airline_solo_full_g31p_medium_reasoning_0
+    save_to: airline_solo_full_g31p_medium_reasoning_0_3
     agent_llm: gemini-3.1-pro-preview
     seed: 242524252
-  retail_solo_full_g31p_high_reasoning_0_3:
-    base_run: retail_solo_full_g31p_high_reasoning_0
-    save_to: retail_solo_full_g31p_high_reasoning_0_3
+  airline_solo_full_g31p_high_reasoning_0_3:
+    base_run: airline_solo_full_g31p_high_reasoning_0
+    save_to: airline_solo_full_g31p_high_reasoning_0_3
     agent_llm: gemini-3.1-pro-preview
     seed: 262726272

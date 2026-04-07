@@ -317,7 +317,7 @@ class VertexUserSimulator(UserSimulator):
                 self.system_prompt,
                 history,
                 vertex_include_reasoning_in_request=bool(
-                    self.llm_args.get("vertex_include_reasoning_in_request", True)
+                    self.llm_args.get("vertex_include_reasoning_in_request", False)
                 ),
             )
             if uses_vertex_openai_chat(self.llm_args):
