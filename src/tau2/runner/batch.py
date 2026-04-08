@@ -531,8 +531,13 @@ def run_tasks(
     is_voice = isinstance(config, VoiceRunConfig)
 
     # Seed management
-    random.seed(config.seed)
-    seeds = [random.randint(0, 1000000) for _ in range(config.num_trials)]
+    # - seed == -1: generate truly random trial seeds (non-deterministic)
+    # - otherwise: deterministic per-run trial seeds from the provided seed
+    if config.seed == -1:
+        rng = random.SystemRandom()
+    else:
+        rng = random.Random(config.seed)
+    seeds = [rng.randint(0, 1000000) for _ in range(config.num_trials)]
     if (
         isinstance(config, TextRunConfig)
         and config.llm_args_agent
