@@ -513,3 +513,175 @@ runs:
     save_to: retail_solo_full_g31p_high_reasoning_0_3
     agent_llm: gemini-3.1-pro-preview
     seed: 262726272
+
+  # ---------------------------------------------------------------------------
+  # openai_agent — uses OpenAI Python SDK directly (no google-genai dependency).
+  #
+  # Advantages over vertex_agent + vertex_openai_chat_url:
+  #   - Simpler auth: plain API key (set openai_api_key: "EMPTY" for vLLM, or
+  #     a real key for openai.com). No gcloud identity-token machinery.
+  #   - chat_template_kwargs forwarded via extra_body (vLLM thinking / injection).
+  #   - log_raw_tokens: true — logs input + output token IDs via loguru DEBUG,
+  #     mirroring the inspector script panels (uses /render + /tokenize endpoints).
+  #
+  # Auth: set openai_api_key: "EMPTY" for vLLM, or your real key for openai.com.
+  # For gcloud identity-token protected Cloud Run, keep using vertex_agent with
+  # vertex_openai_chat_url (that path handles Google OIDC auth automatically).
+  #
+  # Run (from tau3-bench-fork/):
+  #   uv run tau2config --config examples/retail_vertex_text.yaml \
+  #       --run-ids retail_solo_gemma4_26b_openai_agent
+  # ---------------------------------------------------------------------------
+
+  # Base template for openai_agent solo runs.
+  retail_solo_openai_agent_base:
+    base_run: retail_solo_full_g31fl_low_reasoning_0
+    agent: openai_agent
+    save_to: retail_solo_openai_agent_base
+    fresh: true
+    num_trials: 4
+    seed: -1
+    max_concurrency: 7
+    agent_llm: gemma4-26b-openai
+    agent_llm_args:
+      openai_base_url: "http://34.29.173.120:8000"   # vLLM server root
+      openai_api_key: "EMPTY"                         # vLLM default
+      openai_model: "google/gemma-4-26B-A4B-it"
+      temperature: 0
+      max_tokens: 8192
+      skip_special_tokens: true
+      chat_template_kwargs:
+        enable_thinking: true
+        add_generation_prompt: true
+        # injection_prefix: "<|channel>thought\nUser is "
+
+  # Gemma 4 26B — baseline thinking (no injection).
+  retail_solo_gemma4_26b_openai_agent:
+    base_run: retail_solo_openai_agent_base
+    save_to: retail_solo_gemma4_26b_openai_agent
+    # task_ids: ["0"]
+    fresh: true
+    seed: -1
+
+  # Gemma 4 26B — baseline thinking (no injection).
+  retail_solo_gemma4_26b_openai_agent_mermaid:
+    base_run: retail_solo_openai_agent_base
+    save_to: retail_solo_gemma4_26b_openai_agent
+    # task_ids: ["0"]
+    fresh: true
+    seed: -1
+    retail_policy_path: data/tau2/domains/retail/policy_mermaid_solo2.md
+    agent_llm_args:
+      openai_base_url: "http://34.29.173.120:8000"   # vLLM server root
+      openai_api_key: "EMPTY"                         # vLLM default
+      openai_model: "google/gemma-4-26B-A4B-it"
+      temperature: 0
+      max_tokens: 8192
+      skip_special_tokens: true
+      chat_template_kwargs:
+        enable_thinking: true
+        add_generation_prompt: true
+        # injection_prefix: "<|channel>thought\nLet me first start by the reasoning on the SOP graph. I will focus on the relevant nodes, fetch relevant policies and tool_hints as per the instructions and structure.\nSOP_POLICIES:\n\tGLOBAL:\n\t\trelevant_policies:"
+
+  # Gemma 4 26B — baseline thinking (no injection).
+  retail_solo_gemma4_26b_openai_agent_mermaid_with_thinking:
+    base_run: retail_solo_openai_agent_base
+    save_to: retail_solo_gemma4_26b_openai_agent
+    # task_ids: ["0","1","2","3","4","5","6","7","8","9"]
+    fresh: true
+    seed: -1
+    retail_policy_path: data/tau2/domains/retail/policy_mermaid_solo2.md
+
+
+  # Gemma 4 26B — open thinking block injection (model fills in the thought).
+  retail_solo_gemma4_26b_openai_agent_inject_thinking:
+    base_run: retail_solo_openai_agent_base
+    save_to: retail_solo_gemma4_26b_openai_agent_inject_thinking
+    fresh: true
+    seed: -1
+    agent_llm_args:
+      chat_template_kwargs:
+        enable_thinking: true
+        inject_thinking: true
+
+  # Gemma 4 26B — custom prefix injection + raw token ID logging.
+  # Logs appear at loguru DEBUG level:
+  #   [raw_tokens|openai_agent] INPUT N token IDs [injection_prefix='...'] | <ids>
+  #   [raw_tokens|openai_agent] OUTPUT N token IDs | <ids>
+  #   [raw_tokens|openai_agent] finish=stop prompt_tokens=N completion_tokens=N
+  retail_solo_gemma4_26b_openai_agent_inject_log_tokens:
+    base_run: retail_solo_openai_agent_base
+    save_to: retail_solo_gemma4_26b_openai_agent_inject_log_tokens
+    fresh: true
+    seed: -1
+    agent_llm_args:
+      log_raw_tokens: true
+      log_raw_tokens_max_ids: 120
+      chat_template_kwargs:
+        enable_thinking: true
+        injection_prefix: "<|channel>thought\nLet's plan step by step:\n1) "
+
+  # ---------------------------------------------------------------------------
+  # openai_completions_agent — uses /v1/completions with client-side Jinja2
+  # rendering. No server-side chat_template_kwargs needed — injection prefix
+  # is appended directly to the rendered prompt string.
+  # Raw input prompt and raw output are logged to logfire immediately.
+  #
+  # Run:
+  #   uv run tau2config --config examples/retail_vertex_text.yaml \
+  #       --run-ids retail_solo_gemma4_26b_completions_agent
+  # ---------------------------------------------------------------------------
+
+  retail_solo_completions_agent_base:
+    base_run: retail_solo_full_g31fl_low_reasoning_0
+    agent: openai_completions_agent
+    save_to: retail_solo_completions_agent_base
+    fresh: true
+    num_trials: 4
+    seed: -1
+    max_concurrency: 7
+    agent_llm: gemma4-26b-completions
+    agent_llm_args:
+      openai_base_url: "http://34.29.173.120:8000"
+      openai_model: "google/gemma-4-26B-A4B-it"
+      temperature: 0
+      max_tokens: 16384  
+      enable_thinking: true
+      stop_tokens: ["<turn|>"]
+      jinja_template_path: "scripts/gcloud_scripts/gemma4_26b_injected.jinja"
+
+  # Gemma 4 26B — baseline thinking (no injection).
+  retail_solo_gemma4_26b_completions_agent:
+    base_run: retail_solo_completions_agent_base
+    save_to: retail_solo_gemma4_26b_completions_agent
+    task_ids: ["0"]
+    fresh: true
+    seed: -1
+
+  # Gemma 4 26B — open thinking block injection.
+  retail_solo_gemma4_26b_completions_agent_inject:
+    base_run: retail_solo_completions_agent_base
+    save_to: retail_solo_gemma4_26b_completions_agent_inject
+    fresh: true
+    seed: -1
+    agent_llm_args:
+      openai_base_url: "http://34.29.173.120:8000"
+      openai_model: "google/gemma-4-26B-A4B-it"
+      temperature: 0
+      max_tokens: 3072
+      enable_thinking: true
+      injection_prefix: "<|channel>thought\n"
+
+  # Gemma 4 26B — custom prefix injection.
+  retail_solo_gemma4_26b_completions_agent_inject_prefix:
+    base_run: retail_solo_completions_agent_base
+    save_to: retail_solo_gemma4_26b_completions_agent_inject_prefix
+    fresh: true
+    seed: -1
+    agent_llm_args:
+      openai_base_url: "http://34.29.173.120:8000"
+      openai_model: "google/gemma-4-26B-A4B-it"
+      temperature: 0
+      max_tokens: 3072
+      enable_thinking: true
+      injection_prefix: "<|channel>thought\nLet's plan step by step:\n1) "

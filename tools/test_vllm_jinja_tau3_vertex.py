@@ -27,7 +27,12 @@ import yaml
 from tau2.domains.retail.data_model import RetailDB
 from tau2.domains.retail.tools import RetailTools
 from tau2.domains.retail.utils import RETAIL_DB_PATH, RETAIL_TASK_SET_PATH
-from tau2.utils.vllm_jinja_client import LLMClient, Tool, ToolParameter
+from tau2.utils.vllm_jinja_client import (
+    LLMClient,
+    Tool,
+    ToolParameter,
+    schema_to_tool_parameter,
+)
 
 DEFAULT_VERTEX_OPENAI_CHAT_URL = "https://gemma4-26b-fp8-gcreopmlnq-uc.a.run.app"
 DEFAULT_VERTEX_OPENAI_CHAT_MODEL = "gemma4-26b-fp8"
@@ -39,38 +44,6 @@ def _load_yaml(path: Path | None) -> dict:
     with path.open(encoding="utf-8") as f:
         raw = yaml.safe_load(f)
     return raw if isinstance(raw, dict) else {}
-
-
-def _schema_to_tool_param(schema: dict) -> ToolParameter:
-    t = str(schema.get("type") or "string")
-    enum = schema.get("enum")
-    enum_list = [str(v) for v in enum] if isinstance(enum, list) else None
-
-    properties_raw = schema.get("properties")
-    props: dict[str, ToolParameter] | None = None
-    if isinstance(properties_raw, dict):
-        props = {
-            str(k): _schema_to_tool_param(v)
-            for k, v in properties_raw.items()
-            if isinstance(v, dict)
-        }
-
-    items_raw = schema.get("items")
-    items = items_raw if isinstance(items_raw, dict) else None
-    required_raw = schema.get("required")
-    required = (
-        [str(x) for x in required_raw] if isinstance(required_raw, list) else None
-    )
-
-    return ToolParameter(
-        type=t,
-        description=str(schema.get("description") or ""),
-        enum=enum_list,
-        properties=props,
-        required=required,
-        items=items,
-        nullable=bool(schema.get("nullable", False)),
-    )
 
 
 def _load_retail_task_user_message(tasks_path: Path, task_id: str) -> str:
@@ -100,7 +73,7 @@ def _register_all_retail_tools(client: LLMClient, db_path: Path) -> None:
         params = fn.get("parameters", {})
         param_props = params.get("properties", {}) if isinstance(params, dict) else {}
         param_defs = {
-            str(k): _schema_to_tool_param(v)
+            str(k): schema_to_tool_parameter(v)
             for k, v in param_props.items()
             if isinstance(v, dict)
         }
@@ -183,6 +156,12 @@ def main() -> int:
         default=Path("tools/simulation_trace.json"),
         help="Where to write conversation trace JSON.",
     )
+    ap.add_argument(
+        "--prompt-injection",
+        type=str,
+        default="",
+        help="Optional text injected only when a new/open model turn starts.",
+    )
     args = ap.parse_args()
 
     cfg = _load_yaml(args.request_yaml)
@@ -204,6 +183,9 @@ def main() -> int:
     top_p = float(params.get("top_p", 0.95))
     timeout_s = int(params.get("timeout_s", 180))
     enable_thinking = bool(cfg.get("enable_thinking", True))
+    prompt_injection = str(cfg.get("prompt_injection") or "")
+    if args.prompt_injection:
+        prompt_injection = args.prompt_injection
     # Thinking + tool calls need headroom; tiny max_tokens hits finish_reason=length mid-thought.
     if not args.no_tool:
         max_tokens = max(max_tokens, 1024)
@@ -219,6 +201,7 @@ def main() -> int:
         vertex_openai_model=model,
         bos_token=str(cfg.get("bos_token") or "<bos>"),
         enable_thinking=enable_thinking,
+        prompt_injection=prompt_injection,
         system_prompt=system_prompt,
     )
 
@@ -299,6 +282,7 @@ def main() -> int:
         "endpoint": base.rstrip("/"),
         "model": model,
         "enable_thinking": enable_thinking,
+        "prompt_injection": prompt_injection,
         "max_tokens": max_tokens,
         "temperature": temperature,
         "top_p": top_p,
