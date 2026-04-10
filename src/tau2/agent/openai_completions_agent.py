@@ -200,7 +200,12 @@ def parse_completion(
         return ""
 
     full_text = _TOOL_CALL_RE.sub(_replace, full_text)
-    content = full_text.strip().removesuffix("<turn|>").strip()
+    content = (
+        full_text.strip()
+        .removesuffix("<turn|>")
+        .removesuffix("<|tool_response>")
+        .strip()
+    )
     return reasoning, tool_calls, content
 
 
@@ -316,6 +321,7 @@ class OpenAICompletionsAgent(LLMAgent):
             "temperature": temperature,
             "stop":        stop_tokens,
             "skip_special_tokens": False,
+            "include_stop_str_in_output": True,
         }
         if runtime_seed is not None:
             payload["seed"] = int(runtime_seed)
