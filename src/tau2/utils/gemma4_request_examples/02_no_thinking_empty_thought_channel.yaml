@@ -1,0 +1,28 @@
+# No thinking flag: template injects <|channel>thought + <channel|> before generation when
+# enable_thinking is false (see chat_template.jinja). Matches the "empty channel" stabilization tip.
+
+prompt_mode: template
+bos_token: "<bos>"
+enable_thinking: false
+add_generation_prompt: true
+
+vertex_openai_chat_url: https://gemma4-26b-fp8-gcreopmlnq-uc.a.run.app
+vertex_openai_chat_model: gemma4-26b-fp8
+
+messages:
+  - role: system
+    content: "You are a helpful assistant."
+  - role: user
+    content: "Say hello in one short sentence."
+
+tools: []
+
+parameters:
+  max_tokens: 256
+  temperature: 0.0
+  stream: false
+  stop: ["<turn|>", "<|turn>"]
+  add_special_tokens: false
+  skip_special_tokens: false
+  include_stop_str_in_output: true
+  timeout_s: 180

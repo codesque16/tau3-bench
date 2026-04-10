@@ -16,12 +16,27 @@ Google identity token whose audience defaults to ``scheme://host`` of that URL; 
 ``vertex_openai_chat_audience``, or set ``vertex_openai_chat_use_access_token: true`` to send
 the usual GCP access token instead (only if your ingress accepts it).
 
+**Gemma 4 on vLLM (official ``chat_template.jinja`` + ``/v1/completions``)** — for Gemma-serving
+URLs, the framework uses ``tau2.utils.vllm_jinja_client.call_jinja_vllm_for_vertex_openai``
+(same Jinja template as HF / ``tools/test_vllm_jinja_tau3_vertex.py``). Set
+``vertex_use_gemma4_vllm_client: false`` to force the older OpenAI ``/v1/chat/completions``
+path. When the flag is omitted, the Gemma completions path is used if ``vertex_openai_chat_model``
+contains ``"gemma"`` (case-insensitive). If ``vertex_use_gemma4_vllm_loop_state: true``, the
+legacy string builder in ``gemma4_vllm_client_simple`` is used instead. Optional
+``vertex_gemma_vllm_timeout_s`` overrides the HTTP timeout for that client.
+
 For **vLLM** Gemma 4 thinking, raw ``curl`` and the Gemma 4 recipe use **top-level**
 ``"chat_template_kwargs": {"enable_thinking": true}`` on the JSON body — the same shape
 ``vertex_endpoint_parameters`` produces (no rewrite). The OpenAI Python SDK instead sends that
 inside ``extra_body``; if your server only accepts that form, add an explicit ``extra_body`` key
 under ``vertex_endpoint_parameters`` in YAML. Set ``TAU2_VLLM_MIRROR_CHAT_TEMPLATE_KWARGS_EXTRA_BODY=1``
 to copy root ``chat_template_kwargs`` into ``extra_body`` as well (both keys present).
+
+**Prompt injection** (Gemma ``/v1/completions`` path via ``vllm_jinja_client``): set
+``chat_template_kwargs.prompt_injection`` to a string appended immediately after the model-turn
+opener (``<|turn>model`` plus newline) on each new assistant turn (same idea as
+``tau2.utils.vllm_jinja_client`` ``prompt_injection``). Legacy keys ``thought_injection_suffix``
+and ``assistant_turn_injection_prefix`` are accepted as fallbacks and normalized to the same value.
 
 Locally, ``google.oauth2.id_token.fetch_id_token`` often fails with user Application Default
 Credentials; tau2 then runs ``gcloud auth print-identity-token`` **without** ``--audiences``
@@ -37,9 +52,11 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import shutil
 import subprocess
 import time
+from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urlparse
 
@@ -133,6 +150,24 @@ def sanitize_openai_messages_for_vertex_predict(
     ]
 
 
+def _load_chat_template_from_path(path_value: Any) -> str:
+    """
+    Resolve and read a chat template file path from YAML params.
+
+    - Accepts absolute or relative paths.
+    - Relative paths are resolved against current working directory.
+    """
+    path_raw = str(path_value or "").strip()
+    if not path_raw:
+        raise ValueError("chat_template_path is empty")
+    p = Path(path_raw).expanduser()
+    if not p.is_absolute():
+        p = (Path.cwd() / p).resolve()
+    if not p.is_file():
+        raise ValueError(f"chat_template_path does not exist or is not a file: {p}")
+    return p.read_text(encoding="utf-8")
+
+
 def normalize_vertex_openai_chat_url(raw: str) -> str:
     s = (raw or "").strip()
     if not s:
@@ -146,6 +181,116 @@ def normalize_vertex_openai_chat_url(raw: str) -> str:
     if low.endswith("/v1"):
         return s + "/chat/completions"
     return s + "/v1/chat/completions"
+
+
+def vertex_openai_chat_service_base_url(raw: str) -> str:
+    """
+    Service root for OpenAI-style base URLs (strip ``/v1/chat/completions`` or trailing ``/v1``).
+
+    Used by the Gemma 4 ``/v1/completions`` client, which expects ``https://host`` without path.
+    """
+    s = (raw or "").strip()
+    if not s:
+        raise ValueError("vertex_openai_chat_url is empty")
+    if "://" not in s:
+        s = "https://" + s
+    s = s.rstrip("/")
+    low = s.lower()
+    if low.endswith("/v1/chat/completions"):
+        return s[: -len("/v1/chat/completions")]
+    if low.endswith("/v1"):
+        return s[: -len("/v1")]
+    return s
+
+
+def use_gemma4_vllm_completions_client(llm_args: dict | None, *, openai_model: str) -> bool:
+    """
+    Whether to use ``vllm_jinja_client`` (``chat_template.jinja`` + ``POST .../v1/completions``).
+
+    Default: ``True`` when ``openai_model`` contains ``\"gemma\"`` (case-insensitive).
+    Override with ``vertex_use_gemma4_vllm_client: true|false`` in ``llm_args``.
+
+    Not used when ``vertex_openai_chat_use_access_token`` is set: that path uses OAuth access
+    tokens for ``/v1/chat/completions``, while the Gemma client uses identity tokens only.
+    """
+    if (llm_args or {}).get("vertex_openai_chat_use_access_token"):
+        return False
+    raw = (llm_args or {}).get("vertex_use_gemma4_vllm_client")
+    if raw is None:
+        return "gemma" in (openai_model or "").lower()
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).lower() in ("1", "true", "yes")
+
+
+def gemma4_vllm_generation_params_from_llm_args(llm_args: dict[str, Any]) -> dict[str, Any]:
+    """Merge ``temperature`` / ``max_tokens`` / thinking flags like ``build_openai_chat_completions_body``."""
+    temperature = float(llm_args.get("temperature", 0.0) or 0.0)
+    max_tok = llm_args.get("max_tokens")
+    max_tokens = int(max_tok) if max_tok is not None else 3072
+    params = llm_args.get("vertex_endpoint_parameters") or {}
+    if params is not None and not isinstance(params, dict):
+        raise ValueError("vertex_endpoint_parameters must be a dict when set.")
+    for k, v in dict(params or {}).items():
+        if k == "temperature":
+            temperature = float(v)
+        elif k == "max_tokens":
+            max_tokens = int(v)
+    enable_thinking = True
+    prepend_thought_channel = True
+    force_model_turn_restart_after_tool_response = False
+    # Appended after ``<|turn>model\n`` for Gemma vLLM completions (see module docstring).
+    prompt_injection = ""
+    ctk = params.get("chat_template_kwargs") if isinstance(params, dict) else None
+    if isinstance(ctk, dict) and "enable_thinking" in ctk:
+        enable_thinking = bool(ctk["enable_thinking"])
+    if isinstance(ctk, dict) and "prepend_thought_channel" in ctk:
+        prepend_thought_channel = bool(ctk["prepend_thought_channel"])
+    if isinstance(ctk, dict) and "force_model_turn_restart_after_tool_response" in ctk:
+        force_model_turn_restart_after_tool_response = bool(
+            ctk["force_model_turn_restart_after_tool_response"]
+        )
+    if isinstance(ctk, dict):
+        if "prompt_injection" in ctk and ctk["prompt_injection"] is not None:
+            prompt_injection = str(ctk["prompt_injection"])
+        elif "assistant_turn_injection_prefix" in ctk and ctk["assistant_turn_injection_prefix"] is not None:
+            prompt_injection = str(ctk["assistant_turn_injection_prefix"])
+        elif "thought_injection_suffix" in ctk and ctk["thought_injection_suffix"] is not None:
+            prompt_injection = str(ctk["thought_injection_suffix"])
+    timeout_s = int(
+        llm_args.get("vertex_gemma_vllm_timeout_s")
+        or os.getenv("TAU2_GEMMA4_VLLM_TIMEOUT_S")
+        or "180"
+    )
+    return {
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "enable_thinking": enable_thinking,
+        "prepend_thought_channel": prepend_thought_channel,
+        "force_model_turn_restart_after_tool_response": force_model_turn_restart_after_tool_response,
+        "prompt_injection": prompt_injection,
+        # Deprecated aliases (same string); kept for callers that still read these keys.
+        "thought_injection_suffix": prompt_injection,
+        "assistant_turn_injection_prefix": prompt_injection,
+        "timeout": timeout_s,
+    }
+
+
+def resolve_runtime_seed(llm_args: dict | None) -> int | None:
+    """
+    Runtime seed resolution for model calls.
+
+    - ``seed`` unset/None -> ``None`` (provider default randomness).
+    - ``seed`` >= 0 -> deterministic fixed seed.
+    - ``seed`` == -1 -> generate a fresh random seed per request.
+    """
+    raw = (llm_args or {}).get("seed")
+    if raw is None:
+        return None
+    seed = int(raw)
+    if seed == -1:
+        return random.SystemRandom().randint(0, 2_147_483_647)
+    return seed
 
 
 def vertex_openai_chat_id_token_audience(chat_completions_url: str) -> str:
@@ -661,8 +806,13 @@ def build_vertex_predict_body(
     params = llm_args.get("vertex_endpoint_parameters") or {}
     if params is not None and not isinstance(params, dict):
         raise ValueError("vertex_endpoint_parameters must be a dict when set.")
+    chat_template_path = (
+        params.get("chat_template_path") if isinstance(params, dict) else None
+    )
+    if chat_template_path is not None:
+        instance["chat_template"] = _load_chat_template_from_path(chat_template_path)
     for k, v in dict(params or {}).items():
-        if k not in ("messages", "@requestFormat"):
+        if k not in ("messages", "@requestFormat", "chat_template_path"):
             instance[k] = v
     if tools:
         instance["tools"] = tools
@@ -701,8 +851,14 @@ def build_openai_chat_completions_body(
     Flat JSON for ``POST .../v1/chat/completions`` (OpenAI-compatible servers).
 
     ``vertex_endpoint_parameters`` merges in like ``build_vertex_predict_body``, excluding keys
-    that would overwrite ``messages`` or ``model``. vLLM ``chat_template_kwargs`` stays at the root
-    of the JSON (same as raw ``curl``). See module doc for optional ``extra_body`` mirroring.
+    that would overwrite ``messages`` or ``model``.
+
+    For vLLM/OpenAI SDK compatibility, ``chat_template`` / ``chat_template_kwargs`` are sent
+    under ``extra_body``:
+
+    - ``chat_template_path`` (file path) -> ``extra_body.chat_template`` (file contents)
+    - ``chat_template`` -> ``extra_body.chat_template``
+    - ``chat_template_kwargs`` -> ``extra_body.chat_template_kwargs``
     """
     clean_messages = sanitize_openai_messages_for_vertex_predict(openai_messages)
     body: dict[str, Any] = {
@@ -716,13 +872,39 @@ def build_openai_chat_completions_body(
     params = llm_args.get("vertex_endpoint_parameters") or {}
     if params is not None and not isinstance(params, dict):
         raise ValueError("vertex_endpoint_parameters must be a dict when set.")
+    extra_body_in = params.get("extra_body") if isinstance(params, dict) else None
+    extra_body: dict[str, Any] = dict(extra_body_in) if isinstance(extra_body_in, dict) else {}
+    chat_template_path = params.get("chat_template_path") if isinstance(params, dict) else None
+    if chat_template_path is not None:
+        extra_body["chat_template"] = _load_chat_template_from_path(chat_template_path)
+    chat_template_inline = params.get("chat_template") if isinstance(params, dict) else None
+    if chat_template_inline is not None:
+        extra_body["chat_template"] = str(chat_template_inline)
+    ctk = params.get("chat_template_kwargs") if isinstance(params, dict) else None
+    if isinstance(ctk, dict):
+        prev_ctk = extra_body.get("chat_template_kwargs")
+        if isinstance(prev_ctk, dict):
+            extra_body["chat_template_kwargs"] = {**prev_ctk, **ctk}
+        else:
+            extra_body["chat_template_kwargs"] = dict(ctk)
+        # Compatibility: some vLLM deployments read chat_template_kwargs at root.
+        body["chat_template_kwargs"] = dict(ctk)
+    if "chat_template" in extra_body and "chat_template" not in body:
+        # Compatibility mirror for servers that expect root-level chat_template.
+        body["chat_template"] = extra_body["chat_template"]
+    if extra_body:
+        body["extra_body"] = extra_body
     reserved = frozenset({"messages", "model", "@requestFormat"})
     for k, v in dict(params or {}).items():
-        if k not in reserved:
+        if k not in reserved and k not in (
+            "chat_template_path",
+            "chat_template",
+            "chat_template_kwargs",
+            "extra_body",
+        ):
             body[k] = v
     if tools:
         body["tools"] = tools
-    _vllm_maybe_mirror_chat_template_kwargs_to_extra_body(body)
     return body
 
 

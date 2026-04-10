@@ -1,0 +1,40 @@
+# Agentic tool use: system includes <|think|> + tool declarations; user asks for weather.
+# Docs note: <|tool_response> may be used as an extra stop sequence for the engine.
+
+prompt_mode: template
+bos_token: "<bos>"
+enable_thinking: true
+add_generation_prompt: true
+
+vertex_openai_chat_url: https://gemma4-26b-fp8-gcreopmlnq-uc.a.run.app
+vertex_openai_chat_model: gemma4-26b-fp8
+
+messages:
+  - role: system
+    content: "You are a helpful assistant."
+  - role: user
+    content: "What's the temperature in London?"
+
+tools:
+  - type: function
+    function:
+      name: get_current_temperature
+      description: Get the current temperature for a city.
+      parameters:
+        type: object
+        properties:
+          location:
+            type: string
+            description: City name.
+        required:
+          - location
+
+parameters:
+  max_tokens: 512
+  temperature: 0.0
+  stream: false
+  stop: ["<turn|>", "<|turn>", "<|tool_response>"]
+  add_special_tokens: false
+  skip_special_tokens: false
+  include_stop_str_in_output: true
+  timeout_s: 180

@@ -10,6 +10,7 @@ from loguru import logger
 from tau2.agent.llm_agent import LLMAgent
 from tau2.data_model.message import AssistantMessage, Message, ToolCall, ToolMessage
 from tau2.environment.tool import Tool
+from tau2.utils.vllm_jinja_client import call_jinja_vllm_for_vertex_openai
 from tau2.utils.genai_logfire import (
     genai_generate_with_logfire,
     vertex_endpoint_generate_with_logfire,
@@ -29,10 +30,13 @@ from tau2.utils.vertex_endpoint_chat import (
     prediction_message_reasoning_text,
     prediction_tool_calls_as_tau,
     prediction_usage_with_cost,
+    resolve_runtime_seed,
     tau_messages_to_openai_chat,
+    use_gemma4_vllm_completions_client,
     uses_vertex_endpoint,
     uses_vertex_openai_chat,
     vertex_openai_chat_id_token_audience,
+    vertex_openai_chat_service_base_url,
 )
 
 
@@ -303,6 +307,7 @@ class VertexAgent(LLMAgent):
 
         model = self._resolve_model_name()
         start_time = time.perf_counter()
+        runtime_seed = resolve_runtime_seed(self.llm_args)
 
         openai_tools = [tool.openai_schema for tool in self.tools] if self.tools else []
 
@@ -332,6 +337,21 @@ class VertexAgent(LLMAgent):
                     openai_tools or None,
                     model=openai_model,
                 )
+                if runtime_seed is not None and "seed" not in body:
+                    body["seed"] = int(runtime_seed)
+                precomputed_openai: tuple[dict[str, Any], dict[str, Any]] | None = None
+                if use_gemma4_vllm_completions_client(self.llm_args, openai_model=openai_model):
+                    base_url = vertex_openai_chat_service_base_url(
+                        str(self.llm_args.get("vertex_openai_chat_url") or "")
+                    )
+                    precomputed_openai = call_jinja_vllm_for_vertex_openai(
+                        base_url=base_url,
+                        model=openai_model,
+                        llm_args=self.llm_args or {},
+                        api_messages=api_messages,
+                        tools=openai_tools or None,
+                        runtime_seed=runtime_seed,
+                    )
                 if self.llm_args.get("vertex_openai_chat_use_access_token"):
                     id_audience = None
                 else:
@@ -342,7 +362,15 @@ class VertexAgent(LLMAgent):
                 body = build_vertex_predict_body(
                     self.llm_args, api_messages, openai_tools or None
                 )
+                instance = body.get("instances", [{}])[0] if isinstance(body, dict) else {}
+                if (
+                    runtime_seed is not None
+                    and isinstance(instance, dict)
+                    and "seed" not in instance
+                ):
+                    instance["seed"] = int(runtime_seed)
                 id_audience = None
+                precomputed_openai = None
             full_payload, pred = vertex_endpoint_generate_with_logfire(
                 predict_url=predict_url,
                 body=body,
@@ -357,6 +385,9 @@ class VertexAgent(LLMAgent):
                     )
                 ),
                 id_token_audience=id_audience,
+                precomputed_openai_chat=precomputed_openai
+                if uses_vertex_openai_chat(self.llm_args)
+                else None,
             )
             elapsed = time.perf_counter() - start_time
             content = prediction_assistant_text(pred)
@@ -398,8 +429,8 @@ class VertexAgent(LLMAgent):
             config_kwargs["automatic_function_calling"] = (
                 types.AutomaticFunctionCallingConfig(disable=True)
             )
-        if self.llm_args.get("seed") is not None:
-            config_kwargs["seed"] = int(self.llm_args["seed"])
+        if runtime_seed is not None:
+            config_kwargs["seed"] = int(runtime_seed)
         thinking_config = self._resolve_thinking_config(types)
         if thinking_config is not None:
             config_kwargs["thinking_config"] = thinking_config

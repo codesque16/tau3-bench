@@ -1,0 +1,32 @@
+# Inputs for ``python -m tau2.utils.vllm_client_v0`` (override path with ``VLLM_REQUEST_YAML``).
+# Follow Gemma 4 control tokens and turns (Google AI Gemma docs).
+#
+# Use ``prompt_mode: simple`` with ``system_prompt`` / ``user_message``, or ``prompt_mode: template``
+# with ``messages`` (+ optional ``tools``) rendered via ``chat_template.jinja``.
+# See ``gemma4_request_examples/*.yaml`` for template-based cases.
+
+prompt_mode: simple
+
+system_prompt: You are a helpful assistant.
+user_message: Say hi in one word.
+enable_thinking: true
+
+# Same keys as ``examples/retail_vertex_text.yaml`` agent_llm_args (fp8 Cloud Run).
+vertex_openai_chat_url: https://gemma4-26b-fp8-gcreopmlnq-uc.a.run.app
+vertex_openai_chat_model: gemma4-26b-fp8
+
+# Passed into ``build_request`` / HTTP client (omit ``seed`` to leave it unset).
+# ``max_tokens`` must be large enough for thinking + tool calls (64 truncates and causes junk).
+parameters:
+  max_tokens: 8192
+  temperature: 0.0
+  stream: false
+  stop: ["<turn|>", "<|turn>"]
+  add_special_tokens: false
+  skip_special_tokens: false
+  include_stop_str_in_output: true
+  timeout_s: 180
+
+# Optional: full ``prompt`` string; when non-empty, ignores system_prompt / user_message /
+# enable_thinking for transcript construction (same as env ``VLLM_PROMPT``).
+# prompt: ""

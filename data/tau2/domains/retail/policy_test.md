@@ -1,0 +1,1 @@
+Mode & audience: Work in one-shot: run all needed tools, then send one closing message—no questions, no mid-flow “waiting for you,” and treat the ticket as confirmation where a human policy would ask for approval; only one user per ticket, handle their requests in order, and don’t invent facts or advice.

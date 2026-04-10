@@ -588,6 +588,7 @@ def vertex_endpoint_generate_with_logfire(
     timeout_s: int = 120,
     logfire_render_config: Any | None = None,
     id_token_audience: str | None = None,
+    precomputed_openai_chat: tuple[dict[str, Any], dict[str, Any]] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """
     POST to a Vertex dedicated endpoint ``:predict`` or an OpenAI-compatible
@@ -623,16 +624,18 @@ def vertex_endpoint_generate_with_logfire(
 
     openai_flat = isinstance(body, dict) and is_openai_chat_completions_request_body(body)
 
-    if id_token_audience:
-        token = fetch_google_identity_token_for_audience(id_token_audience)
-    else:
-        creds, _ = google.auth.default(
-            scopes=["https://www.googleapis.com/auth/cloud-platform"]
-        )
-        creds.refresh(Request())
-        token = getattr(creds, "token", None) or ""
-        if not token:
-            raise RuntimeError("Failed to obtain Google ADC token for Vertex endpoint predict.")
+    token = ""
+    if precomputed_openai_chat is None:
+        if id_token_audience:
+            token = fetch_google_identity_token_for_audience(id_token_audience)
+        else:
+            creds, _ = google.auth.default(
+                scopes=["https://www.googleapis.com/auth/cloud-platform"]
+            )
+            creds.refresh(Request())
+            token = getattr(creds, "token", None) or ""
+            if not token:
+                raise RuntimeError("Failed to obtain Google ADC token for Vertex endpoint predict.")
 
     instance = (body.get("instances") or [{}])[0] if isinstance(body, dict) else {}
     request_extras: dict[str, Any] = {
@@ -641,6 +644,7 @@ def vertex_endpoint_generate_with_logfire(
         "vertex_body_has_tool_choice": isinstance(instance, dict) and "tool_choice" in instance,
         "openai_chat_completions_flat_body": openai_flat,
         "id_token_audience": id_token_audience,
+        "precomputed_openai_chat": precomputed_openai_chat is not None,
     }
     if openai_tools is not None:
         request_extras["tools"] = openai_tools
@@ -686,6 +690,10 @@ def vertex_endpoint_generate_with_logfire(
         "tools": openai_tools,
         "body": _to_jsonable(body),
     }
+    response_data_raw: dict[str, Any] | None = None
+    request_after_chat_template: Any = None
+    response_after_chat_template: Any = None
+    gemma4_vllm_transcript: Any = None
     logger.info(
         "[{}] {}: vertex endpoint model={} messages={}",
         actor,
@@ -694,39 +702,64 @@ def vertex_endpoint_generate_with_logfire(
         len(api_messages),
     )
 
-    last_exc: BaseException | None = None
     payload: dict[str, Any] = {}
-    for attempt in range(max_retries):
-        try:
-            payload = vertex_predict_post(predict_url, token, body, timeout_s=timeout_s)
-            break
-        except RuntimeError as e:
-            last_exc = e
-            if attempt >= max_retries - 1 or not _vertex_endpoint_retryable(e):
-                logger.error(f"[{actor}] {call_name} failed: {e}")
-                raise
-            delay = min(cap_s, base_s * (2**attempt))
-            suggested = _vertex_endpoint_retry_delay_s(e)
-            if suggested is not None:
-                delay = max(delay, min(cap_s, suggested))
-            logger.warning(
-                "[{}] {} attempt {}/{} failed ({}); retrying in {:.1f}s",
-                actor,
-                call_name,
-                attempt + 1,
-                max_retries,
-                e,
-                delay,
+    if precomputed_openai_chat is not None:
+        payload, pred = precomputed_openai_chat
+        if not openai_flat:
+            raise ValueError(
+                "precomputed_openai_chat requires body to be a flat OpenAI chat payload "
+                "(messages list) for logging."
             )
-            time.sleep(delay)
+        if isinstance(payload, dict):
+            req_url = payload.get("_tau2_gemma4_vllm_request_url")
+            req_payload = payload.get("_tau2_gemma4_vllm_request_payload")
+            req_after = payload.get("_tau2_gemma4_vllm_request_after_chat_template")
+            resp_after = payload.get("_tau2_gemma4_vllm_response_after_chat_template")
+            if isinstance(req_url, str) and req_url:
+                request_data["actual_request_url"] = req_url
+            if req_payload is not None:
+                request_data["actual_request_body"] = _to_jsonable(req_payload)
+            if req_after is not None:
+                request_after_chat_template = _to_jsonable(req_after)
+            if resp_after is not None:
+                response_after_chat_template = _to_jsonable(resp_after)
+            gt = payload.get("_tau2_gemma4_vllm_transcript")
+            if gt is not None:
+                gemma4_vllm_transcript = _to_jsonable(gt)
+            response_data_raw = _to_jsonable(payload)
     else:
-        assert last_exc is not None
-        raise last_exc
+        last_exc: BaseException | None = None
+        for attempt in range(max_retries):
+            try:
+                payload = vertex_predict_post(predict_url, token, body, timeout_s=timeout_s)
+                break
+            except RuntimeError as e:
+                last_exc = e
+                if attempt >= max_retries - 1 or not _vertex_endpoint_retryable(e):
+                    logger.error(f"[{actor}] {call_name} failed: {e}")
+                    raise
+                delay = min(cap_s, base_s * (2**attempt))
+                suggested = _vertex_endpoint_retry_delay_s(e)
+                if suggested is not None:
+                    delay = max(delay, min(cap_s, suggested))
+                logger.warning(
+                    "[{}] {} attempt {}/{} failed ({}); retrying in {:.1f}s",
+                    actor,
+                    call_name,
+                    attempt + 1,
+                    max_retries,
+                    e,
+                    delay,
+                )
+                time.sleep(delay)
+        else:
+            assert last_exc is not None
+            raise last_exc
 
-    if openai_flat:
-        pred = parse_openai_chat_completion_response(payload)
-    else:
-        pred = parse_vertex_prediction(payload)
+        if openai_flat:
+            pred = parse_openai_chat_completion_response(payload)
+        else:
+            pred = parse_vertex_prediction(payload)
     reasoning_only = prediction_message_reasoning_text(pred)
     body_only = prediction_assistant_body_text(pred)
     response_tool_calls = _vertex_prediction_to_response_tool_calls(pred)
@@ -764,7 +797,10 @@ def vertex_endpoint_generate_with_logfire(
     endpoint_io_json = {
         "tool_round": tool_round,
         "request": request_data,
-        "response": _to_jsonable(payload),
+        "response": response_data_raw if response_data_raw is not None else _to_jsonable(payload),
+        "request_after_chat_template": request_after_chat_template,
+        "response_after_chat_template": response_after_chat_template,
+        "gemma4_vllm_transcript": gemma4_vllm_transcript,
         "prediction": _to_jsonable(pred),
     }
     request_data_for_model_run = {

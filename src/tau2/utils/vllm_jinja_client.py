@@ -16,14 +16,16 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 import requests
 from jinja2 import Environment
 
 from tau2.utils.vertex_endpoint_chat import (
     fetch_google_identity_token_for_audience,
+    gemma4_vllm_generation_params_from_llm_args,
     normalize_vertex_openai_chat_url,
+    resolve_runtime_seed,
     vertex_openai_chat_id_token_audience,
 )
 
@@ -71,7 +73,7 @@ def _vllm_openai_completions_body(
     return body
 
 
-def _post_vllm_openai_completions_text(
+def _vllm_openai_completions_post(
     *,
     base_url: str,
     model: str,
@@ -87,8 +89,8 @@ def _post_vllm_openai_completions_text(
     include_stop_str_in_output: bool = True,
     seed: int | None = None,
     log_raw_json: bool = False,
-) -> str:
-    """POST ``/v1/completions`` with Google identity token; return ``choices[0].text``."""
+) -> tuple[str, dict[str, Any]]:
+    """POST ``/v1/completions``; return ``(choices[0].text, usage_dict)``."""
     body = _vllm_openai_completions_body(
         model=model,
         prompt=prompt,
@@ -123,15 +125,53 @@ def _post_vllm_openai_completions_text(
             model=model,
         )
     if not isinstance(payload, dict):
-        return ""
+        return "", {}
+    usage = payload.get("usage") if isinstance(payload.get("usage"), dict) else {}
     choices = payload.get("choices")
     if not isinstance(choices, list) or not choices:
-        return ""
+        return "", usage
     first = choices[0]
     if isinstance(first, dict):
         t = first.get("text")
-        return t if isinstance(t, str) else ""
-    return ""
+        return (t if isinstance(t, str) else ""), usage
+    return "", usage
+
+
+def _post_vllm_openai_completions_text(
+    *,
+    base_url: str,
+    model: str,
+    prompt: str,
+    max_tokens: int = 512,
+    temperature: float = 0.0,
+    top_p: float | None = None,
+    timeout_s: int = 180,
+    stream: bool = False,
+    stop: list[str] | None = None,
+    add_special_tokens: bool = False,
+    skip_special_tokens: bool = False,
+    include_stop_str_in_output: bool = True,
+    seed: int | None = None,
+    log_raw_json: bool = False,
+) -> str:
+    """POST ``/v1/completions`` with Google identity token; return ``choices[0].text``."""
+    text, _ = _vllm_openai_completions_post(
+        base_url=base_url,
+        model=model,
+        prompt=prompt,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        top_p=top_p,
+        timeout_s=timeout_s,
+        stream=stream,
+        stop=stop,
+        add_special_tokens=add_special_tokens,
+        skip_special_tokens=skip_special_tokens,
+        include_stop_str_in_output=include_stop_str_in_output,
+        seed=seed,
+        log_raw_json=log_raw_json,
+    )
+    return text
 
 
 def _print_vllm_raw_response_json(
@@ -227,6 +267,40 @@ class Tool:
         return {"type": "function", "function": func}
 
 
+def schema_to_tool_parameter(schema: dict[str, Any]) -> ToolParameter:
+    """
+    Build :class:`ToolParameter` from a JSON-schema-like dict (same rules as
+    ``tools/test_vllm_jinja_tau3_vertex.py``).
+    """
+    t = str(schema.get("type") or "string")
+    enum = schema.get("enum")
+    enum_list = [str(v) for v in enum] if isinstance(enum, list) else None
+
+    properties_raw = schema.get("properties")
+    props: dict[str, ToolParameter] | None = None
+    if isinstance(properties_raw, dict):
+        props = {
+            str(k): schema_to_tool_parameter(v)
+            for k, v in properties_raw.items()
+            if isinstance(v, dict)
+        }
+
+    items_raw = schema.get("items")
+    items = items_raw if isinstance(items_raw, dict) else None
+    required_raw = schema.get("required")
+    required = [str(x) for x in required_raw] if isinstance(required_raw, list) else None
+
+    return ToolParameter(
+        type=t,
+        description=str(schema.get("description") or ""),
+        enum=enum_list,
+        properties=props,
+        required=required,
+        items=items,
+        nullable=bool(schema.get("nullable", False)),
+    )
+
+
 @dataclass
 class Message:
     """A single conversation turn."""
@@ -246,6 +320,93 @@ class Message:
         d.setdefault("tool_calls", [])
         d.setdefault("tool_responses", [])
         return d
+
+
+def openai_chat_dicts_to_messages(messages: list[dict[str, Any]]) -> list[Message]:
+    """
+    Convert OpenAI chat API messages (with interleaved ``role: tool``) into
+    :class:`Message` list for :class:`ChatTemplateRenderer` / :class:`LLMClient`.
+    """
+    out: list[Message] = []
+    i = 0
+    n = len(messages)
+    while i < n:
+        m = messages[i]
+        if not isinstance(m, dict):
+            i += 1
+            continue
+        role = str(m.get("role") or "")
+        if role == "tool":
+            i += 1
+            continue
+        if role == "assistant":
+            base_tc = list(m.get("tool_calls") or [])
+            id_to_name: dict[str, str] = {}
+            tool_calls_clean: list[dict[str, Any]] = []
+            for tc in base_tc:
+                if not isinstance(tc, dict):
+                    continue
+                tid = str(tc.get("id") or "")
+                fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+                name = str(fn.get("name") or "unknown_tool")
+                if tid:
+                    id_to_name[tid] = name
+                fn_copy = dict(fn)
+                raw_args = fn_copy.get("arguments")
+                if isinstance(raw_args, str):
+                    try:
+                        parsed = json.loads(raw_args)
+                        if isinstance(parsed, dict):
+                            fn_copy["arguments"] = parsed
+                    except Exception:
+                        pass
+                tool_calls_clean.append({**tc, "function": fn_copy})
+            out.append(
+                Message(
+                    role="assistant",
+                    content=m.get("content") if m.get("content") is not None else "",
+                    tool_calls=tool_calls_clean or None,
+                )
+            )
+            i += 1
+            tool_responses: list[dict[str, Any]] = []
+            while i < n and str((messages[i] or {}).get("role") or "") == "tool":
+                tm = messages[i]
+                tid = str(tm.get("tool_call_id") or "")
+                tname = id_to_name.get(tid, "unknown_tool")
+                raw_c = tm.get("content")
+                if isinstance(raw_c, (dict, list)):
+                    resp_body: Any = raw_c
+                elif isinstance(raw_c, str):
+                    try:
+                        resp_body = json.loads(raw_c)
+                    except Exception:
+                        resp_body = {"result": raw_c}
+                else:
+                    resp_body = {"result": raw_c}
+                if not isinstance(resp_body, dict):
+                    resp_body = {"value": resp_body}
+                tool_responses.append({"name": tname, "response": resp_body})
+                i += 1
+            if tool_responses:
+                out.append(
+                    Message(
+                        role="user",
+                        content="",
+                        tool_responses=tool_responses,
+                    )
+                )
+            continue
+        out.append(
+            Message(
+                role=role,
+                content=m.get("content") if m.get("content") is not None else "",
+                tool_calls=list(m.get("tool_calls") or []) or None,
+                tool_responses=list(m.get("tool_responses") or []) or None,
+            )
+        )
+        i += 1
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -323,7 +484,8 @@ class ResponseParser:
     """
     Parses raw model output that uses the custom token format:
       <|tool_call>call:func_name{arg:val}<tool_call|>
-    and extracts text content vs. tool calls.
+    Tool arguments: unwrap ``<|"|>…<|"|>`` to the literal text inside, split ``key: value`` and
+    top-level commas/brackets as in the model string — no int/bool coercion or other reinterpretation.
     """
 
     TOOL_CALL_PATTERN = re.compile(
@@ -395,12 +557,8 @@ class ResponseParser:
         }
 
     def _parse_args(self, raw: str) -> dict:
-        """
-        Very simple key:value parser that handles <|"|>string<|"|> quoted values.
-        For production use you'd want a proper recursive parser.
-        """
+        """Decode ``{...}`` body: quoted spans → literal text; same comma/bracket structure as in ``raw``."""
         result: dict[str, Any] = {}
-        # Replace quoted strings with placeholders
         placeholders: list[str] = []
 
         def replace_quoted(m: re.Match) -> str:
@@ -409,18 +567,29 @@ class ResponseParser:
 
         cleaned = self.QUOTED_VALUE.sub(replace_quoted, raw)
 
-        # Split on top-level commas (naive, works for flat args)
         for pair in self._split_top_level(cleaned, ","):
             if ":" not in pair:
                 continue
             key, _, val = pair.partition(":")
             key = key.strip()
             val = val.strip()
-            # Restore placeholders
             for i, ph in enumerate(placeholders):
                 val = val.replace(f"__PLACEHOLDER_{i}__", ph)
-            result[key] = self._coerce(val)
+            result[key] = self._parse_arg_value(val)
+
         return result
+
+    @staticmethod
+    def _parse_arg_value(val: str) -> Any:
+        """Return one scalar string, or one list of strings per top-level comma inside ``[...]``."""
+        s = val.strip()
+        if len(s) >= 2 and s[0] == "[" and s[-1] == "]":
+            inner = s[1:-1]
+            if not inner.strip():
+                return []
+            parts = ResponseParser._split_top_level(inner, ",")
+            return [e.strip() for e in parts]
+        return s
 
     @staticmethod
     def _split_top_level(s: str, delimiter: str) -> list[str]:
@@ -439,22 +608,6 @@ class ResponseParser:
         if current:
             parts.append("".join(current))
         return parts
-
-    @staticmethod
-    def _coerce(val: str) -> Any:
-        if val == "true":
-            return True
-        if val == "false":
-            return False
-        try:
-            return int(val)
-        except ValueError:
-            pass
-        try:
-            return float(val)
-        except ValueError:
-            pass
-        return val
 
 
 # ---------------------------------------------------------------------------
@@ -477,6 +630,7 @@ class LLMClient:
         *,
         bos_token: str = "<|begin_of_text|>",
         enable_thinking: bool = False,
+        prompt_injection: str = "",
         system_prompt: str | None = None,
         http_headers: dict | None = None,
         vertex_openai_model: str | None = None,
@@ -491,6 +645,9 @@ class LLMClient:
         self.endpoint = endpoint
         self._vertex_openai_model = vertex_openai_model
         self.enable_thinking = enable_thinking
+        self.prompt_injection = str(prompt_injection or "")
+        # Suffix appended by ``build_prompt`` when injection is active (for parsing: prefix + API text).
+        self._last_prompt_injection_applied: str = ""
         self.renderer = ChatTemplateRenderer(bos_token=bos_token)
         self.parser = ResponseParser()
         self.history: list[Message] = []
@@ -514,6 +671,10 @@ class LLMClient:
         for t in tools:
             self.register_tool(t)
 
+    def clear_registered_tools(self) -> None:
+        self.tools = []
+        self._tool_map = {}
+
     # ------------------------------------------------------------------
     # Conversation helpers
     # ------------------------------------------------------------------
@@ -531,17 +692,61 @@ class LLMClient:
         else:
             self.history = []
 
+    def replace_history_from_openai_chat(self, messages: list[dict[str, Any]]) -> None:
+        """
+        Replace non-system turns from OpenAI ``messages`` (same folding as the Jinja
+        integration test: interleaved ``role: tool`` → ``user`` + ``tool_responses``).
+        Preserves the initial ``system`` message from :meth:`clear_history` /
+        ``__init__`` (call :meth:`clear_history` first if you need a clean slate).
+        """
+        self.clear_history(keep_system=True)
+        self.history.extend(openai_chat_dicts_to_messages(messages))
+
     # ------------------------------------------------------------------
     # Core send / receive
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _has_open_model_turn(prompt: str) -> bool:
+        """True when prompt currently ends inside an assistant/model turn."""
+        s = str(prompt or "")
+        model_start = s.rfind("<|turn>model\n")
+        if model_start < 0:
+            return False
+        # If a turn close appears after the most recent model start, model turn is not open.
+        next_close = s.find("<turn|>", model_start)
+        return next_close < 0
+
+    def _prompt_injection_suffix_for_prompt(self, prompt: str) -> tuple[str, str]:
+        """
+        Return ``(full_prompt, applied_suffix)``.
+
+        ``applied_suffix`` is exactly what we append before the model generates; the API
+        returns only the continuation, so parsing should use ``applied_suffix + raw_text``.
+        """
+        inj = self.prompt_injection
+        if not inj:
+            return prompt, ""
+        if not self._has_open_model_turn(prompt):
+            return prompt, ""
+        if prompt.endswith(inj):
+            return prompt, ""
+        if inj.startswith("\n") or prompt.endswith("\n"):
+            suffix = inj
+        else:
+            suffix = "\n" + inj
+        return prompt + suffix, suffix
+
     def build_prompt(self, add_generation_prompt: bool = True) -> str:
-        return self.renderer.render(
+        prompt = self.renderer.render(
             messages=self.history,
             tools=self.tools or None,
             add_generation_prompt=add_generation_prompt,
             enable_thinking=self.enable_thinking,
         )
+        full, applied = self._prompt_injection_suffix_for_prompt(prompt)
+        self._last_prompt_injection_applied = applied
+        return full
 
     def _call_endpoint(self, prompt: str, **generation_kwargs) -> str:
         """
@@ -734,6 +939,11 @@ class LLMClient:
         Send a user message, get a response. Optionally auto-invoke tools.
 
         Returns the final assistant text content.
+
+        If ``trace_events`` is a list, one record is appended per **model completion**
+        (each generation normally ends at ``<turn|>`` / stop — i.e. one template turn).
+        All ``tool_calls`` from that completion and their ``tool_responses`` sit in the
+        same record. A later HTTP round (next open model turn) appends a **new** record.
         """
         if user_message is not None:
             self.add_user_message(user_message)
@@ -748,7 +958,10 @@ class LLMClient:
                 print(f"{'='*60}\n")
 
             raw_response = self._call_endpoint(prompt, **generation_kwargs)
-            parsed = self.parser.parse(raw_response)
+            inj_prefix = self._last_prompt_injection_applied or ""
+            # Model completes the prompt after our injected prefix; parse the effective turn.
+            effective_assistant_text = inj_prefix + raw_response
+            parsed = self.parser.parse(effective_assistant_text)
             # User-visible text only: never return raw CoT (matches Gemma guidance to strip
             # thoughts between turns; here we strip for display and for stored history).
             content_raw = parsed.get("content")
@@ -759,7 +972,9 @@ class LLMClient:
                     {
                         "round": round_idx,
                         "prompt": prompt,
+                        "prompt_injection_prefix": inj_prefix,
                         "raw_response_text": raw_response,
+                        "effective_text_for_parsing": effective_assistant_text,
                         "assistant_content_raw": content_raw,
                         "assistant_thought": thought,
                         "assistant_content_visible": visible,
@@ -807,6 +1022,246 @@ class LLMClient:
             if msg.tool_responses:
                 print(f"    tool_responses: {msg.tool_responses}")
         print("="*129 + "\n")
+
+
+def register_openai_function_schemas_on_client(
+    client: LLMClient,
+    openai_tools: list[dict[str, Any]] | None,
+    handlers_by_name: Mapping[str, Callable[..., Any]] | None = None,
+) -> None:
+    """
+    Register OpenAI-style tool dicts (``type`` / ``function`` / ``parameters``) on
+    ``client``, same shape as ``tools/test_vllm_jinja_tau3_vertex.py`` retail registration.
+    Handlers are optional (tau3 executes tools in the environment).
+    """
+    client.clear_registered_tools()
+    hb = handlers_by_name or {}
+    for schema in openai_tools or []:
+        if not isinstance(schema, dict):
+            continue
+        fn = schema.get("function")
+        if not isinstance(fn, dict):
+            continue
+        name = str(fn.get("name") or "").strip()
+        if not name:
+            continue
+        params = fn.get("parameters")
+        param_props: dict[str, Any] = {}
+        required_list: list[str] = []
+        if isinstance(params, dict):
+            props = params.get("properties")
+            if isinstance(props, dict):
+                param_props = {
+                    str(k): v for k, v in props.items() if isinstance(v, dict)
+                }
+            rq = params.get("required")
+            if isinstance(rq, list):
+                required_list = [str(x) for x in rq]
+        param_defs = {
+            str(k): schema_to_tool_parameter(v) for k, v in param_props.items()
+        }
+        client.register_tool(
+            Tool(
+                name=name,
+                description=str(fn.get("description") or name),
+                parameters=param_defs,
+                required=required_list,
+                handler=hb.get(name),
+            )
+        )
+
+
+def _vertex_gemma_bos_token_from_llm_args(llm_args: dict[str, Any]) -> str:
+    p = llm_args.get("vertex_endpoint_parameters")
+    if isinstance(p, dict):
+        b = p.get("bos_token")
+        if isinstance(b, str) and b.strip():
+            return b.strip()
+    b2 = llm_args.get("gemma_bos_token")
+    if isinstance(b2, str) and b2.strip():
+        return b2.strip()
+    return "<bos>"
+
+
+def call_jinja_vllm_for_vertex_openai(
+    *,
+    base_url: str,
+    model: str,
+    llm_args: dict[str, Any],
+    api_messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None = None,
+    runtime_seed: int | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """
+    Vertex vLLM Gemma path: same rendering and tool registration as
+    ``tools/test_vllm_jinja_tau3_vertex.py`` — :class:`LLMClient` ``build_prompt`` +
+    ``POST /v1/completions`` + :class:`ResponseParser`.
+
+    Return shape matches ``gemma4_vllm_client_simple.call_gemma4_vllm_for_vertex_openai_simple``
+    for Logfire / :func:`vertex_endpoint_generate_with_logfire`.
+
+    When ``vertex_use_gemma4_vllm_loop_state`` is true, defers to the legacy simple client.
+    """
+    if bool((llm_args or {}).get("vertex_use_gemma4_vllm_loop_state")):
+        from tau2.utils.gemma4_vllm_client_simple import (
+            call_gemma4_vllm_for_vertex_openai_simple,
+        )
+
+        return call_gemma4_vllm_for_vertex_openai_simple(
+            base_url=base_url,
+            model=model,
+            llm_args=llm_args,
+            api_messages=api_messages,
+            tools=tools,
+            runtime_seed=runtime_seed,
+        )
+
+    gp = gemma4_vllm_generation_params_from_llm_args(llm_args)
+    seed = (
+        runtime_seed if runtime_seed is not None else resolve_runtime_seed(llm_args)
+    )
+    prompt_injection = str(gp.get("prompt_injection") or "")
+
+    stripped_api: list[dict[str, Any]] = []
+    for m in api_messages or []:
+        if not isinstance(m, dict):
+            continue
+        stripped_api.append(
+            {k: v for k, v in m.items() if k != "_logfire_mixed_content"}
+        )
+
+    system_parts: list[str] = []
+    idx = 0
+    while idx < len(stripped_api) and str(stripped_api[idx].get("role") or "") == "system":
+        c = stripped_api[idx].get("content")
+        if isinstance(c, str):
+            system_parts.append(c)
+        elif c is not None:
+            system_parts.append(str(c))
+        idx += 1
+    system_prompt = "\n\n".join(p for p in system_parts if str(p).strip()).strip() or None
+
+    client = LLMClient(
+        endpoint=base_url.rstrip("/"),
+        vertex_openai_model=model,
+        bos_token=_vertex_gemma_bos_token_from_llm_args(llm_args),
+        enable_thinking=bool(gp["enable_thinking"]),
+        prompt_injection=prompt_injection,
+        system_prompt=system_prompt,
+    )
+    register_openai_function_schemas_on_client(client, tools)
+    client.replace_history_from_openai_chat(stripped_api[idx:])
+
+    params = llm_args.get("vertex_endpoint_parameters") or {}
+    if not isinstance(params, dict):
+        params = {}
+    gen_kwargs: dict[str, Any] = {
+        "max_tokens": int(gp["max_tokens"]),
+        "temperature": float(gp["temperature"]),
+        "timeout_s": int(gp["timeout"]),
+        "add_special_tokens": bool(params.get("add_special_tokens", False)),
+        "skip_special_tokens": bool(params.get("skip_special_tokens", False)),
+        "include_stop_str_in_output": bool(
+            params.get("include_stop_str_in_output", True)
+        ),
+        "stream": bool(params.get("stream", False)),
+        "seed": seed,
+        "log_raw_json": bool(
+            llm_args.get("vertex_gemma_vllm_log_raw_json", False)
+        ),
+    }
+    if params.get("top_p") is not None:
+        gen_kwargs["top_p"] = float(params["top_p"])
+    if params.get("stop") is not None:
+        gen_kwargs["stop"] = params["stop"]
+    elif tools:
+        gen_kwargs["stop"] = ["<turn|>", "<|turn>", "<|tool_response>"]
+
+    prompt = client.build_prompt()
+    raw, usage = _vllm_openai_completions_post(
+        base_url=base_url,
+        model=model,
+        prompt=prompt,
+        **gen_kwargs,
+    )
+    inj_prefix = client._last_prompt_injection_applied or ""
+    effective = inj_prefix + raw
+    parser = client.parser
+    parsed = parser.parse(effective)
+    content_raw = parsed.get("content")
+    thought = ResponseParser.extract_thought_blocks(content_raw)
+    visible = ResponseParser.strip_thought_blocks(content_raw)
+
+    tool_calls_openai: list[dict[str, Any]] = []
+    for tidx, tc in enumerate(parsed.get("tool_calls") or []):
+        fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+        fn_name = str(fn.get("name") or "")
+        if not fn_name:
+            continue
+        args = fn.get("arguments")
+        if not isinstance(args, dict):
+            args = {}
+        tool_calls_openai.append(
+            {
+                "id": f"call_{tidx}_{fn_name}",
+                "type": "function",
+                "function": {"name": fn_name, "arguments": json.dumps(args)},
+            }
+        )
+
+    msg: dict[str, Any] = {"role": "assistant", "content": visible or ""}
+    if str(thought or "").strip():
+        msg["reasoning_content"] = str(thought)
+    if tool_calls_openai:
+        msg["tool_calls"] = tool_calls_openai
+
+    body = _vllm_openai_completions_body(
+        model=model,
+        prompt=prompt,
+        max_tokens=int(gen_kwargs["max_tokens"]),
+        temperature=float(gen_kwargs["temperature"]),
+        top_p=gen_kwargs.get("top_p"),
+        stream=bool(gen_kwargs["stream"]),
+        stop=gen_kwargs.get("stop"),
+        add_special_tokens=bool(gen_kwargs["add_special_tokens"]),
+        skip_special_tokens=bool(gen_kwargs["skip_special_tokens"]),
+        include_stop_str_in_output=bool(gen_kwargs["include_stop_str_in_output"]),
+        seed=gen_kwargs.get("seed"),
+    )
+
+    full_payload: dict[str, Any] = {
+        "_tau2_gemma4_vllm_jinja_client": True,
+        "_tau2_gemma4_vllm_client_simple": False,
+        "_tau2_gemma4_vllm_request_url": f"{base_url.rstrip('/')}/v1/completions",
+        "_tau2_gemma4_vllm_request_payload": body,
+        "_tau2_gemma4_vllm_transcript": {
+            "prompt": prompt,
+            "completion": raw,
+            "prompt_plus_completion": prompt + raw,
+        },
+        "_tau2_gemma4_vllm_response_after_chat_template": {
+            "reasoning_content": msg.get("reasoning_content", ""),
+            "content": msg.get("content", ""),
+            "tool_calls": tool_calls_openai,
+            "conversation_array": [
+                {
+                    "role": "assistant",
+                    "content": content_raw or "",
+                    "thought": thought,
+                    "tool_calls": tool_calls_openai,
+                }
+            ],
+        },
+        "object": "text_completion",
+        "choices": [{"text": raw, "finish_reason": "stop", "index": 0}],
+        "usage": usage,
+        "model": model,
+    }
+    pred: dict[str, Any] = {
+        "choices": [{"index": 0, "message": msg, "finish_reason": "stop"}],
+        "usage": usage,
+    }
+    return full_payload, pred
 
 
 # ---------------------------------------------------------------------------

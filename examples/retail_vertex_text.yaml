@@ -221,7 +221,7 @@ runs:
       vertex_openai_chat_model: "gemma4-26b"
       vertex_endpoint_parameters:
         temperature: 0
-        max_tokens: 8192
+        max_tokens: 4096
         top_p: 0.95
         skip_special_tokens: false
         chat_template_kwargs:
@@ -231,8 +231,31 @@ runs:
     base_run: retail_solo_gemma4_26b_bf16_cloud_run
     save_to: retail_solo_gemma4_26b_fp8_cloud_run
     fresh: true
+    # task_ids: ["2"]
     num_trials: 4
-    seed: 772002002
+    seed: -1
+    agent_llm: gemma4-26b-fp8-cloud-run
+    max_concurrency: 3
+    retail_policy_path: /Users/shiladityabanerjee/Projects/tau2-mermaid/tau3-bench-fork/data/tau2/domains/retail/policy_mermaid_solo2.md
+    agent_llm_args: 
+      vertex_openai_chat_url: "https://gemma4-26b-fp8-chat-template-53845524870.us-central1.run.app"
+      vertex_openai_chat_model: "gemma4-26b-fp8"
+      vertex_use_gemma4_vllm_client: false
+      vertex_endpoint_parameters:
+        temperature: 0
+        max_tokens: 4096
+        top_p: 0.95
+        skip_special_tokens: true
+        chat_template_kwargs:
+          enable_thinking: true
+          add_generation_prompt: true
+
+  retail_solo_gemma4_26b_fp8_cloud_run_inject1:
+    base_run: retail_solo_gemma4_26b_bf16_cloud_run
+    save_to: retail_solo_gemma4_26b_fp8_cloud_run
+    fresh: true
+    num_trials: 1
+    seed: -1
     agent_llm: gemma4-26b-fp8-cloud-run
     max_concurrency: 10
     agent_llm_args:
@@ -245,6 +268,21 @@ runs:
         skip_special_tokens: false
         chat_template_kwargs:
           enable_thinking: true
+          prompt_injection: |
+            <|channel>thought
+            I need to first start by mapping the current state to a node which policies are currently relvant for the state the tool hints attached to the node. I need to first retrieve the current context and cite the current node , the relevant policies in that node , and y other relvant rtules and then reason on top of it for the next steps and present it in proper yaml format
+            ```yaml
+            context:
+                current_node:
+                relevant_node_policies:
+                tool_hints:
+               relevant_rules:
+
+            next_steps:
+                node_transition: <required/not>
+                next_node: <if node transition required then which node>
+                reasoning: <tool calls next steps, rationale behind node transition>
+            ```
 
   # Same stack as ``retail_solo_gemma4_26b_fp8_cloud_run`` but agent policy from ``policy_mermaid_solo.md``.
   # ``retail_policy_path`` is resolved from the process cwd (run ``tau2config`` from ``tau3-bench-fork/``).
@@ -252,7 +290,73 @@ runs:
     base_run: retail_solo_gemma4_26b_fp8_cloud_run
     save_to: retail_solo_gemma4_26b_fp8_cloud_run_mermaid_policy
     fresh: true
-    retail_policy_path: data/tau2/domains/retail/policy_mermaid_solo.md
+    num_trials: 4
+    seed: -1
+    max_concurrency: 10
+    retail_policy_path: data/tau2/domains/retail/policy_mermaid_solo2.md
+
+  # Mermaid policy + ``prompt_injection``: text appended after ``<|turn>model`` (Vertex Gemma
+  # path uses ``vllm_jinja_client`` / ``chat_template.jinja``). Include ``<|channel>thought`` here if you want a thought-channel prefill.
+  retail_solo_gemma4_26b_fp8_cloud_run_mermaid_policy_thought_injection:
+    base_run: retail_solo_gemma4_26b_fp8_cloud_run_mermaid_policy
+    save_to: retail_solo_gemma4_26b_fp8_cloud_run_mermaid_policy_thought_injection
+    fresh: true
+    num_trials: 1
+    seed: -1
+    max_concurrency: 4
+    retail_policy_path: data/tau2/domains/retail/policy_mermaid_solo2.md
+    agent_llm_args:
+      vertex_endpoint_parameters:
+        chat_template_kwargs:
+          enable_thinking: true
+          prompt_injection: |
+            <|channel>thought
+            I need to first start by mapping the current state to a node which policies are currently relvant for the state the tool hints attached to the node. I need to first retrieve the current context and cite the current node , the relevant policies in that node , and y other relvant rtules and then reason on top of it for the next steps and present it in proper yaml format
+            ```yaml
+            context:
+                current_node:
+                relevant_node_policies:
+                tool_hints:
+               relevant_rules:
+
+            next_steps:
+                node_transition: <required/not>
+                next_node: <if node transition required then which node>
+                reasoning: <tool calls next steps, rationale behind node transition>
+            ```
+
+  retail_solo_gemma4_26b_fp8_cloud_run_mermaid_policy_assistant_turn_injection:
+    base_run: retail_solo_gemma4_26b_fp8_cloud_run_mermaid_policy_thought_injection
+    save_to: retail_solo_gemma4_26b_fp8_cloud_run_mermaid_policy_assistant_turn_injection
+    fresh: true
+    num_trials: 1
+    seed: -1
+    max_concurrency: 4
+    task_ids: ["0","1","2"]
+    retail_policy_path: data/tau2/domains/retail/policy_solo.md
+    agent_llm_args:
+      vertex_endpoint_parameters:
+        chat_template_kwargs:
+          enable_thinking: true
+          prompt_injection: |
+            <|channel>thought
+            I need to first start by mapping the current state to a node which policies are currently relvant for the state the tool hints attached to the node. I need to first retrieve the current context and cite the current node , the relevant policies in that node , and y other relvant rtules and then reason on top of it for the next steps and present it in proper yaml format
+            ```yaml
+            context:
+                current_node:
+                relevant_node_policies:
+                tool_hints:
+               relevant_rules:
+
+            next_steps:
+                node_transition: <required/not>
+                next_node: <if node transition required then which node>
+                reasoning: <tool calls next steps, rationale behind node transition>
+            ```
+            <channel|>
+            ```yaml
+            context:
+                current_node:
 
   # Same as ``retail_solo_gemma4_26b_fp8_cloud_run`` but policy from ``policy_solo_corrected.md``.
   retail_solo_gemma4_26b_fp8_cloud_run_policy_solo_corrected:
