@@ -528,29 +528,45 @@ class TestToolCall:
 # =============================================================================
 
 
+BARGE_IN_SYSTEM_PROMPT = (
+    "You are a helpful assistant. When asked anything, give a very long, "
+    "detailed response. Explain thoroughly with multiple paragraphs. "
+    "Never give short answers."
+)
+
+# Minimum agent audio ticks to confirm sustained speech before interrupting
+MIN_AGENT_AUDIO_TICKS = 25  # 5 seconds at 200ms ticks
+# How many ticks of agent audio to let play before sending interrupt
+INTERRUPT_AFTER_TICKS = 5  # 1 second at 200ms ticks
+# Consecutive silence ticks required to confirm agent yielded
+SILENCE_TICKS_REQUIRED = 3  # 0.6 seconds
+# Max trailing audio ticks allowed after interruption event
+MAX_TRAILING_AUDIO_TICKS = 3  # ~0.6 seconds grace for pipeline flush
+
+
 class TestBargeIn:
-    """Verify the adapter handles user interruptions during agent speech."""
+    """Verify the adapter handles user interruptions and actually yields."""
 
     @pytest.mark.parametrize("audio_file", SPEECH_AUDIO)
-    def test_barge_in(self, connected_adapter: DiscreteTimeAdapter, audio_file: str):
-        """Interrupt the agent while it is speaking and verify truncation."""
-        trigger_audio = load_telephony_audio(audio_file)
-        trigger_chunks = chunk_audio(trigger_audio, connected_adapter.bytes_per_tick)
-
-        # Step 1: trigger agent response
-        results = run_ticks_until(
-            connected_adapter, trigger_chunks, stop_when="agent_audio"
+    def test_barge_in_detected(self, adapter: DiscreteTimeAdapter, audio_file: str):
+        """Basic check: interruption event fires when user speaks over agent."""
+        adapter.connect(
+            system_prompt=BARGE_IN_SYSTEM_PROMPT,
+            tools=[],
+            vad_config=None,
+            modality="audio",
         )
+
+        trigger_audio = load_telephony_audio(audio_file)
+        trigger_chunks = chunk_audio(trigger_audio, adapter.bytes_per_tick)
+
+        results = run_ticks_until(adapter, trigger_chunks, stop_when="agent_audio")
         assert any(r.agent_audio_bytes > 0 for r in results), (
             f"Agent never started speaking for {audio_file}"
         )
 
-        # Step 2: while agent is producing audio, send speech to trigger barge-in.
-        # Use "help_me.ulaw" as the interrupting speech.
         interrupt_audio = load_telephony_audio("help_me.ulaw")
-        interrupt_chunks = chunk_audio(
-            interrupt_audio, connected_adapter.bytes_per_tick
-        )
+        interrupt_chunks = chunk_audio(interrupt_audio, adapter.bytes_per_tick)
 
         tick_offset = len(results)
         truncation_detected = False
@@ -561,10 +577,8 @@ class TestBargeIn:
                 if tick < len(interrupt_chunks)
                 else make_silence()
             )
-            result = connected_adapter.run_tick(
-                user_audio, tick_number=tick_offset + tick + 1
-            )
-            assert_audio_capping(result, connected_adapter)
+            result = adapter.run_tick(user_audio, tick_number=tick_offset + tick + 1)
+            assert_audio_capping(result, adapter)
 
             if result.was_truncated:
                 truncation_detected = True
@@ -576,4 +590,145 @@ class TestBargeIn:
         assert truncation_detected, (
             "Barge-in not detected: no was_truncated or speech_started/interrupted "
             f"event within {MAX_RESPONSE_TICKS} ticks after sending interrupting speech"
+        )
+
+    def test_barge_in_baseline(self, adapter: DiscreteTimeAdapter):
+        """Verify agent produces sustained audio (5s+) with the barge-in prompt.
+
+        This establishes that the prompt reliably triggers a long response,
+        so test_barge_in_agent_yields can trust the agent would have kept
+        speaking if not interrupted.
+        """
+        adapter.connect(
+            system_prompt=BARGE_IN_SYSTEM_PROMPT,
+            tools=[],
+            vad_config=None,
+            modality="audio",
+        )
+
+        trigger_audio = load_telephony_audio("hi_how_are_you.ulaw")
+        trigger_chunks = chunk_audio(trigger_audio, adapter.bytes_per_tick)
+
+        results = run_ticks_until(adapter, trigger_chunks, stop_when="agent_audio")
+        assert any(r.agent_audio_bytes > 0 for r in results), (
+            "Agent never started speaking"
+        )
+
+        tick_num = len(results)
+        silence = make_silence()
+        agent_audio_ticks = 0
+
+        for _ in range(MAX_RESPONSE_TICKS):
+            tick_num += 1
+            result = adapter.run_tick(silence, tick_number=tick_num)
+            assert_audio_capping(result, adapter)
+            if result.agent_audio_bytes > 0:
+                agent_audio_ticks += 1
+            if agent_audio_ticks >= MIN_AGENT_AUDIO_TICKS:
+                break
+
+        assert agent_audio_ticks >= MIN_AGENT_AUDIO_TICKS, (
+            f"Agent only produced {agent_audio_ticks} ticks of audio "
+            f"({agent_audio_ticks * TICK_DURATION_MS}ms), "
+            f"need at least {MIN_AGENT_AUDIO_TICKS} ticks "
+            f"({MIN_AGENT_AUDIO_TICKS * TICK_DURATION_MS}ms)"
+        )
+
+    def test_barge_in_agent_yields(self, adapter: DiscreteTimeAdapter):
+        """Full interruption lifecycle: agent speaks, user interrupts, agent yields.
+
+        Relies on test_barge_in_baseline confirming the prompt produces 5s+
+        of agent audio. This test interrupts after 1 second and verifies
+        the agent actually stops.
+        """
+        adapter.connect(
+            system_prompt=BARGE_IN_SYSTEM_PROMPT,
+            tools=[],
+            vad_config=None,
+            modality="audio",
+        )
+
+        # Phase 1: trigger long agent response
+        trigger_audio = load_telephony_audio("hi_how_are_you.ulaw")
+        trigger_chunks = chunk_audio(trigger_audio, adapter.bytes_per_tick)
+
+        results = run_ticks_until(adapter, trigger_chunks, stop_when="agent_audio")
+        assert any(r.agent_audio_bytes > 0 for r in results), (
+            "Agent never started speaking"
+        )
+
+        # Phase 2: let agent speak for INTERRUPT_AFTER_TICKS (~1 second)
+        tick_num = len(results)
+        silence = make_silence()
+        agent_audio_ticks = 0
+
+        for _ in range(INTERRUPT_AFTER_TICKS + 5):
+            tick_num += 1
+            result = adapter.run_tick(silence, tick_number=tick_num)
+            assert_audio_capping(result, adapter)
+            if result.agent_audio_bytes > 0:
+                agent_audio_ticks += 1
+            if agent_audio_ticks >= INTERRUPT_AFTER_TICKS:
+                break
+
+        assert agent_audio_ticks >= INTERRUPT_AFTER_TICKS, (
+            f"Agent only produced {agent_audio_ticks} ticks of audio, "
+            f"need at least {INTERRUPT_AFTER_TICKS} before interrupting"
+        )
+
+        # Phase 3: send interrupt speech (~3 seconds)
+        interrupt_audio = load_telephony_audio("check_order_12345.ulaw")
+        interrupt_chunks = chunk_audio(interrupt_audio, adapter.bytes_per_tick)
+
+        interruption_tick = None
+        trailing_audio_ticks = 0
+        consecutive_silence = 0
+
+        for tick in range(MAX_RESPONSE_TICKS):
+            user_audio = (
+                interrupt_chunks[tick] if tick < len(interrupt_chunks) else silence
+            )
+            tick_num += 1
+            result = adapter.run_tick(user_audio, tick_number=tick_num)
+            assert_audio_capping(result, adapter)
+
+            # Check for interruption event
+            if interruption_tick is None:
+                if result.was_truncated or any(
+                    v in ("speech_started", "interrupted") for v in result.vad_events
+                ):
+                    interruption_tick = tick
+
+            # After interruption, track silence
+            if interruption_tick is not None:
+                if result.agent_audio_bytes > 0:
+                    trailing_audio_ticks += 1
+                    consecutive_silence = 0
+                else:
+                    consecutive_silence += 1
+
+                if consecutive_silence >= SILENCE_TICKS_REQUIRED:
+                    break
+
+        # Assert interruption was detected
+        assert interruption_tick is not None, (
+            "Barge-in not detected: no interruption event within "
+            f"{MAX_RESPONSE_TICKS} ticks"
+        )
+
+        # Assert agent actually stopped (silence follows)
+        assert consecutive_silence >= SILENCE_TICKS_REQUIRED, (
+            f"Agent did not yield after interruption: only {consecutive_silence} "
+            f"consecutive silence ticks (need {SILENCE_TICKS_REQUIRED}). "
+            f"Trailing audio ticks after event: {trailing_audio_ticks}"
+        )
+
+        # Report timing for diagnostic insight
+        trailing_ms = trailing_audio_ticks * TICK_DURATION_MS
+        interrupt_delay_ms = interruption_tick * TICK_DURATION_MS
+        print(
+            f"\n  Interruption detected at tick +{interruption_tick} "
+            f"({interrupt_delay_ms}ms after interrupt speech started)"
+            f"\n  Trailing agent audio after event: {trailing_audio_ticks} ticks "
+            f"({trailing_ms}ms)"
         )
