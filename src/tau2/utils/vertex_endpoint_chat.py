@@ -711,10 +711,12 @@ def tau_messages_to_openai_chat(
         if isinstance(msg, AssistantMessage):
             flush_tools()
             merged = str(getattr(msg, "content", None) or "")
-            req_text = openai_content_for_vertex_request(
-                msg, include_reasoning_in_request=vertex_include_reasoning_in_request
-            )
-            api_msg: dict[str, Any] = {"role": "assistant", "content": req_text}
+            api_msg: dict[str, Any] = {"role": "assistant"}
+            if merged:
+                api_msg["content"] = merged
+            reasoning_content = getattr(msg, "reasoning_content", None)
+            if isinstance(reasoning_content, str) and reasoning_content.strip():
+                api_msg["reasoning"] = reasoning_content
             tcs = getattr(msg, "tool_calls", None) or []
             if isinstance(tcs, list) and tcs:
                 api_calls: list[dict[str, Any]] = []

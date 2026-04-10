@@ -874,6 +874,284 @@ def vertex_endpoint_generate_with_logfire(
     return payload, pred
 
 
+def _vllm_render_decoded(
+    base_url: str,
+    model: str,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None,
+    chat_template_kwargs: dict[str, Any] | None,
+    skip_special_tokens: bool,
+) -> tuple[str, list[int]]:
+    """POST /v1/chat/completions/render → /detokenize. Returns (decoded, ids). Empty on failure."""
+    import requests as _req
+
+    render_url = base_url.rstrip("/") + "/v1/chat/completions/render"
+    detok_url = base_url.rstrip("/") + "/detokenize"
+    ctk = {"chat_template_kwargs": chat_template_kwargs} if chat_template_kwargs else {}
+    payloads = []
+    if tools:
+        payloads.append({"model": model, "messages": messages, "tools": tools,
+                         "skip_special_tokens": skip_special_tokens, **ctk})
+    payloads.append({"model": model, "messages": messages,
+                     "skip_special_tokens": skip_special_tokens, **ctk})
+    payloads.append({"model": model, "messages": messages,
+                     "skip_special_tokens": skip_special_tokens})
+    for payload in payloads:
+        try:
+            r = _req.post(render_url, json=payload, timeout=30)
+            if r.status_code != 200:
+                continue
+            data = r.json()
+            if isinstance(data, list):
+                data = data[0] if data else {}
+            ids = list(data.get("token_ids") or [])
+            if not ids:
+                continue
+            dr = _req.post(detok_url, json={"model": model, "tokens": ids}, timeout=30)
+            decoded = dr.json().get("prompt", "") if dr.status_code == 200 else ""
+            return decoded, ids
+        except Exception:
+            break
+    return "", []
+
+
+
+def _emit_render_log(
+    *,
+    logfire: Any,
+    pred: dict[str, Any],
+    api_messages: list[dict[str, Any]],
+    openai_tools: list[dict[str, Any]] | None,
+    raw_prompt_log_config: dict[str, Any],
+    model: str,
+    tool_round: int,
+) -> None:
+    """
+    Emit ``openai.chat_completions.render`` inside the active logfire span.
+    Calls /render + /detokenize for the input, and /tokenize + /detokenize
+    for the output — mirroring the inspector script panels.
+    Silently skips if the server render endpoint is unavailable.
+    """
+    base_url: str = raw_prompt_log_config.get("base_url", "")
+    render_model: str = raw_prompt_log_config.get("model", model)
+    ctk: dict[str, Any] | None = raw_prompt_log_config.get("chat_template_kwargs")
+    skip_special: bool = bool(raw_prompt_log_config.get("skip_special_tokens", False))
+
+    if not base_url:
+        return
+
+    raw_input, input_ids = _vllm_render_decoded(
+        base_url, render_model, api_messages, openai_tools, ctk, skip_special,
+    )
+
+    # Skip if render endpoint unavailable (nothing came back)
+    if not input_ids:
+        return
+
+    choices = pred.get("choices") or []
+    finish_reason = (choices[0].get("finish_reason") or "") if choices else ""
+    usage = pred.get("usage") or {}
+
+    inj_note = None
+    if ctk:
+        if "injection_prefix" in ctk:
+            inj_note = repr(str(ctk["injection_prefix"])[:60])
+        elif ctk.get("inject_thinking"):
+            inj_note = "inject_thinking=True"
+
+    logfire.info(
+        "openai.chat_completions.render",
+        model=render_model,
+        tool_round=tool_round,
+        finish_reason=finish_reason,
+        injection=inj_note,
+        input_token_count=len(input_ids),
+        prompt_tokens=usage.get("prompt_tokens"),
+        completion_tokens=usage.get("completion_tokens"),
+        raw_input_prompt=raw_input,
+        input_token_ids=input_ids[:200],
+        raw_response=pred,
+    )
+
+
+def openai_generate_with_logfire(
+    *,
+    client: Any,
+    model: str,
+    api_messages: list[dict[str, Any]],
+    openai_tools: list[dict[str, Any]] | None,
+    create_kwargs: dict[str, Any],
+    actor: str,
+    call_name: str,
+    raw_prompt_log_config: dict[str, Any] | None = None,
+) -> Any:
+    """
+    Call openai.chat.completions.create with Logfire + sim_llm_io tracing.
+
+    Mirrors ``vertex_endpoint_generate_with_logfire`` but uses the OpenAI SDK
+    directly instead of HTTP + Google auth. Produces identical Logfire spans
+    (``openai chat completions [assistant]``) so the Model Run UI renders the
+    same way.
+
+    Returns the raw ``ChatCompletion`` response object.
+    """
+    from tau2.utils.vertex_endpoint_chat import (
+        prediction_assistant_body_text,
+        prediction_message_reasoning_text,
+        tool_round_from_openai_messages,
+    )
+
+    tool_round = tool_round_from_openai_messages(api_messages)
+
+    try:
+        import logfire  # type: ignore
+
+        actor_for_span = "assistant" if actor == "agent" else actor
+        span_cm = logfire.span(
+            f"openai chat completions [{actor_for_span}]",
+            _span_name=f"openai.chat_completions [{actor_for_span}]",
+            _tags=["LLM"],
+            actor=actor,
+            call_name=call_name,
+            model=model,
+            llm_system="openai",
+            llm_model_name=model,
+            gen_ai_operation_name="chat.completions",
+            gen_ai_request_model=model,
+            gen_ai_response_model=model,
+            gen_ai_system="openai",
+        )
+    except Exception:
+        logfire = None
+        span_cm = nullcontext()
+
+    logger.info(
+        "[{}] {}: openai chat completions model={} messages={}",
+        actor,
+        call_name,
+        model,
+        len(api_messages),
+    )
+
+    response = client.chat.completions.create(**create_kwargs)
+    pred = response.model_dump(mode="json") if hasattr(response, "model_dump") else {}
+
+    reasoning_only = prediction_message_reasoning_text(pred)
+    body_only = prediction_assistant_body_text(pred)
+    response_tool_calls = _vertex_prediction_to_response_tool_calls(pred)
+
+    usage_raw = pred.get("usage") or {}
+    prompt_tokens = int(usage_raw.get("prompt_tokens") or 0)
+    completion_tokens = int(usage_raw.get("completion_tokens") or 0)
+    total_tokens = int(usage_raw.get("total_tokens") or (prompt_tokens + completion_tokens))
+
+    include_thoughts = True
+    last_assistant_event = _response_to_all_messages_event(
+        include_thoughts=include_thoughts,
+        reasoning=reasoning_only,
+        reasoning_blocks=[],
+        output_text_blocks=[],
+        output_text=body_only,
+        response_tool_calls=response_tool_calls,
+    )
+    input_messages_events = _openai_chat_messages_to_all_messages_events(api_messages)
+    all_messages_events = input_messages_events + [last_assistant_event]
+
+    response_data = {
+        "message": {
+            "role": "assistant",
+            "content": last_assistant_event.get("content"),
+            "reasoning": reasoning_only or None,
+            "reasoning_content": reasoning_only or None,
+            "tool_calls": response_tool_calls or None,
+        }
+    }
+    request_data_for_model_run = {
+        "model": model,
+        "messages": input_messages_events,
+    }
+    request_extras: dict[str, Any] = {}
+    if openai_tools is not None:
+        request_extras["tools"] = openai_tools
+
+    endpoint_io_json = {
+        "tool_round": tool_round,
+        "request": {
+            "model": model,
+            "messages": api_messages,
+            "tools": openai_tools,
+        },
+        "prediction": _to_jsonable(pred),
+    }
+
+    with span_cm as span:
+        if logfire is not None and span is not None and hasattr(span, "set_attribute"):
+            span.set_attribute("llm.model_name", model)
+            span.set_attribute("llm.system", "openai")
+            span.set_attribute("gen_ai.operation.name", "chat.completions")
+            span.set_attribute("gen_ai.request.model", model)
+            span.set_attribute("gen_ai.response.model", model)
+            span.set_attribute("gen_ai.system", "openai")
+            span.set_attribute("gen_ai.usage.input_tokens", prompt_tokens)
+            span.set_attribute("gen_ai.usage.output_tokens", completion_tokens)
+            span.set_attribute("gen_ai.usage.total_tokens", total_tokens)
+            span.set_attribute("llm.token_count.prompt", prompt_tokens)
+            span.set_attribute("llm.token_count.completion", completion_tokens)
+            span.set_attribute("llm.token_count.total", total_tokens)
+            span.set_attribute("all_messages_events", all_messages_events)
+            span.set_attribute("request_data", request_data_for_model_run)
+            span.set_attribute("request_extras", request_extras)
+            span.set_attribute("response_data", response_data)
+            span.set_attribute("input.mime_type", "application/json")
+            span.set_attribute("input.value", {"messages": all_messages_events})
+            span.set_attribute("output.mime_type", "application/json")
+            span.set_attribute("output.value", response_data)
+            span.set_attribute("tool_round", tool_round)
+            flat_attrs = _flatten_llm_messages_attrs(
+                all_messages_events=input_messages_events,
+                response_data=response_data,
+            )
+            for key, value in flat_attrs.items():
+                span.set_attribute(key, value)
+        if logfire is not None:
+            logfire.info(
+                "openai.chat_completions.raw_io",
+                model=model,
+                tool_round=tool_round,
+                openai_io_json=endpoint_io_json,
+            )
+        if logfire is not None and raw_prompt_log_config:
+            _emit_render_log(
+                logfire=logfire,
+                pred=pred,
+                api_messages=api_messages,
+                openai_tools=openai_tools,
+                raw_prompt_log_config=raw_prompt_log_config,
+                model=model,
+                tool_round=tool_round,
+            )
+
+    if actor in ("agent", "user"):
+        try:
+            from tau2.utils.sim_llm_io import write_sim_llm_io_json
+
+            write_sim_llm_io_json(
+                actor,
+                call_name=call_name,
+                payload={
+                    "format": "openai_chat_completions",
+                    "model": model,
+                    "tool_round": tool_round,
+                    "openai_io_json": endpoint_io_json,
+                },
+            )
+        except Exception:
+            pass
+
+    logger.info("[{}] {}: openai chat completions success", actor, call_name)
+    return response
+
+
 def genai_generate_with_logfire(
     *,
     client: Any,

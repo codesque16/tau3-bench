@@ -14,6 +14,8 @@ from tau2.agent.llm_agent import (
     create_llm_gt_agent,
     create_llm_solo_agent,
 )
+from tau2.agent.openai_agent import create_openai_agent
+from tau2.agent.openai_completions_agent import create_openai_completions_agent
 from tau2.agent.vertex_agent import create_vertex_agent
 from tau2.data_model.tasks import Task
 from tau2.domains.airline.environment import (
@@ -299,6 +301,8 @@ try:
     # Agent factories
     registry.register_agent_factory(create_llm_agent, "llm_agent")
     registry.register_agent_factory(create_vertex_agent, "vertex_agent")
+    registry.register_agent_factory(create_openai_agent, "openai_agent")
+    registry.register_agent_factory(create_openai_completions_agent, "openai_completions_agent")
     registry.register_agent_factory(
         create_llm_gt_agent,
         "llm_agent_gt",
