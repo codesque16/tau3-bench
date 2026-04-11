@@ -1,0 +1,9 @@
+{%- if add_generation_prompt -%}
+    {%- if ns.prev_message_type != 'tool_response' -%}
+        {{- '<|turn>supremecommander\n' -}}
+        {{- '<|channel>thought\nLet me first start by the reasoning on the SOP graph. I will focus on the relevant nodes, fetch relevant policies and tool_hints as per the instructions and structure.\n\nSOP_NODE_POLICIES:\n<channel|>\n' -}}
+    {%- endif -%}
+    {%- if not enable_thinking | default(false) -%}
+        {{- '<|channel>thought\n<channel|>' -}}
+    {%- endif -%}
+{%- endif -%}

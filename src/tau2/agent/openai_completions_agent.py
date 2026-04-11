@@ -448,15 +448,71 @@ def _completions_generate_with_logfire(
     completion_tokens = int(usage.get("completion_tokens") or 0)
     total_tokens = int(usage.get("total_tokens") or (prompt_tokens + completion_tokens))
 
+    # Parse output for logfire events (same as openai_generate_with_logfire)
+    reasoning_only, tool_calls_raw, body_only = parse_completion(
+        raw_output=raw_text,
+        injection_prefix=active_prefix,
+    )
+    response_tool_calls = [
+        {
+            "id": tc.get("id", ""),
+            "type": "function",
+            "function": {
+                "name": (tc.get("function") or {}).get("name", ""),
+                "arguments": json.dumps((tc.get("function") or {}).get("arguments") or {}),
+            },
+        }
+        for tc in tool_calls_raw
+    ]
+
+    from tau2.utils.genai_logfire import (
+        _openai_chat_messages_to_all_messages_events,
+        _response_to_all_messages_event,
+        _flatten_llm_messages_attrs,
+    )
+
+    last_assistant_event = _response_to_all_messages_event(
+        include_thoughts=True,
+        reasoning=reasoning_only or "",
+        reasoning_blocks=[],
+        output_text_blocks=[],
+        output_text=body_only,
+        response_tool_calls=response_tool_calls,
+    )
+    input_messages_events = _openai_chat_messages_to_all_messages_events(api_messages)
+    all_messages_events = input_messages_events + [last_assistant_event]
+
+    response_data = {
+        "message": {
+            "role": "assistant",
+            "content": last_assistant_event.get("content"),
+            "reasoning": reasoning_only or None,
+            "tool_calls": response_tool_calls or None,
+        }
+    }
+    request_data = {"model": model, "messages": input_messages_events}
+
     with span_cm as span:
         if logfire is not None and span is not None and hasattr(span, "set_attribute"):
             span.set_attribute("llm.model_name", model)
+            span.set_attribute("llm.system", "openai")
             span.set_attribute("gen_ai.usage.input_tokens", prompt_tokens)
             span.set_attribute("gen_ai.usage.output_tokens", completion_tokens)
             span.set_attribute("gen_ai.usage.total_tokens", total_tokens)
             span.set_attribute("llm.token_count.prompt", prompt_tokens)
             span.set_attribute("llm.token_count.completion", completion_tokens)
             span.set_attribute("tool_round", tool_round)
+            span.set_attribute("all_messages_events", all_messages_events)
+            span.set_attribute("request_data", request_data)
+            span.set_attribute("response_data", response_data)
+            span.set_attribute("input.value", {"messages": all_messages_events})
+            span.set_attribute("output.value", response_data)
+            flat_attrs = _flatten_llm_messages_attrs(
+                all_messages_events=input_messages_events,
+                response_data=response_data,
+            )
+            for key, value in flat_attrs.items():
+                span.set_attribute(key, value)
 
         if logfire is not None:
             logfire.info(

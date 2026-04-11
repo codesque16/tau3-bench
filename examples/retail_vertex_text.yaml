@@ -639,7 +639,7 @@ runs:
     fresh: true
     num_trials: 4
     seed: -1
-    max_concurrency: 7
+    max_concurrency: 10
     agent_llm: gemma4-26b-completions
     agent_llm_args:
       openai_base_url: "http://34.29.173.120:8000"
@@ -654,7 +654,7 @@ runs:
   retail_solo_gemma4_26b_completions_agent:
     base_run: retail_solo_completions_agent_base
     save_to: retail_solo_gemma4_26b_completions_agent
-    task_ids: ["0"]
+    # task_ids: ["0"]
     fresh: true
     seed: -1
 
