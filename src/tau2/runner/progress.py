@@ -143,6 +143,10 @@ class StatusMonitor:
         self.total_count = total_count
         self.completed_count = initial_completed
         self.running_tasks: dict[str, dict] = {}
+        self.peak_running_count = 0
+        self.started_count = 0
+        self.finished_count = 0
+        self.event_seq = 0
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -160,6 +164,20 @@ class StatusMonitor:
                 "trial": trial,
                 "retries": 0,
             }
+            self.started_count += 1
+            self.event_seq += 1
+            running_count = len(self.running_tasks)
+            self.peak_running_count = max(self.peak_running_count, running_count)
+            logger.info(
+                "Concurrency[{}]: running={} peak={} started={} finished={} completed={} after start {}",
+                self.event_seq,
+                running_count,
+                self.peak_running_count,
+                self.started_count,
+                self.finished_count,
+                self.completed_count,
+                task_key,
+            )
 
     def task_restarted(self, task_key: str):
         """Reset the start time for a task and increment retry count."""
@@ -173,6 +191,31 @@ class StatusMonitor:
         with self._lock:
             self.running_tasks.pop(task_key, None)
             self.completed_count += 1
+            self.finished_count += 1
+            self.event_seq += 1
+            running_count = len(self.running_tasks)
+            logger.info(
+                "Concurrency[{}]: running={} peak={} started={} finished={} completed={} after finish {}",
+                self.event_seq,
+                running_count,
+                self.peak_running_count,
+                self.started_count,
+                self.finished_count,
+                self.completed_count,
+                task_key,
+            )
+
+    def snapshot(self) -> dict[str, int]:
+        """Return a thread-safe snapshot of counters for external logging."""
+        with self._lock:
+            return {
+                "running": len(self.running_tasks),
+                "peak_running": self.peak_running_count,
+                "started": self.started_count,
+                "finished": self.finished_count,
+                "completed": self.completed_count,
+                "event_seq": self.event_seq,
+            }
 
     def start(self):
         """Start the background monitoring thread."""

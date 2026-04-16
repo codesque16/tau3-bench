@@ -1,0 +1,39 @@
+vertex_openai_chat_url: "https://gemma4-26b-fp8-53845524870.us-central1.run.app"
+vertex_openai_chat_model: "gemma4-26b-fp8"
+timeout_s: 180
+
+# Use either explicit messages[] or system_prompt_path + user_prompt.
+system_prompt_path: "data/tau2/domains/retail/policy_solo.md"
+# user_prompt: |
+#   Reason for call:
+#   You received your order #W2378156 and wish to exchange the mechanical keyboard
+#   for the same one but with clicky switches and the smart thermostat for one
+#   compatible with Google Home instead of Apple HomeKit.
+
+#   Known info:
+#   You are Yusuf Rossi in zip code 19122.
+
+#   Resolve this ticket completely using the tools as needed. When you are done,
+#   send a single final message to the user summarizing what you did and answering
+#   their needs.
+
+user_prompt: |
+  What is the derivative of x^3 * ln(x)?
+
+# True = all retail domain tools from db.json.
+include_retail_tools: true
+# retail_db_path: "data/tau2/domains/retail/db.json"
+
+vertex_endpoint_parameters:
+  temperature: 0.7
+  max_tokens: 4096
+  top_p: 0.95
+  skip_special_tokens: false
+
+  # These are mapped into request.extra_body.chat_template and
+  # request.extra_body.chat_template_kwargs by build_openai_chat_completions_body().
+  # chat_template_path: "examples/gemma-test-template.jinja"
+  chat_template_kwargs:
+    enable_thinking: true
+    add_generation_prompt: true
+

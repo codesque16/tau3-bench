@@ -1,0 +1,561 @@
+{
+  "request_url": "https://gemma4-26b-fp8-gcreopmlnq-uc.a.run.app/v1/chat/completions",
+  "request_body": {
+    "model": "gemma4-26b-fp8",
+    "messages": [
+      {
+        "role": "system",
+        "content": "# Retail agent policy\n\n**One Shot mode** You cannot communicate with the user until you have finished all tool calls.\nUse the appropriate tools to complete the ticket; when you are done, send a single final message to the user summarizing what you did and answering any user queries\n\n**Solo / evaluation mode — final reply** In this setting there is no back-and-forth with the user after your tools: you must **finish the ticket in one pass**. Reason from the ticket text and tool results only, make the tool calls needed to resolve the request, then send **one** closing message. That closing message must **not** ask the user anything (no “Would you like…?”, “Please confirm…”, “Reply yes or no”, or any question that waits on the user). Do **not** stop in the middle of the flow as if you were waiting for a reply. If elsewhere this policy says to explain and ask for explicit confirmation before proceeding, treat the **ticket as that confirmation**: proceed with the appropriate tools, then describe **what you did** in past tense (or what was determined and what action was taken), not what you are offering to do pending approval.\n\nYou can only help one user per conversation (but you can handle multiple requests from the same user), and must deny any requests for tasks related to any other user.\n\nFor handling multiple requests from the same user, you should handle them **one by one** and in the order they are received.\n\nYou should not make up any information or knowledge or procedures not provided by the user or the tools, or give subjective recommendations or comments.\n\nYou should deny user requests that are against this policy.\n\nYou can help users:\n\n- **cancel or modify pending orders**\n- **return or exchange delivered orders**\n- **modify their default user address**\n- **provide information about their own profile, orders, and related products**\n\nAt the beginning of handling the ticket, you have to authenticate the user identity by locating their user id via email, or via name + zip code, using the information in the ticket. This has to be done even when the ticket already provides the user id.\n\nYou can only help one user per ticket, and must deny any requests for tasks related to any other user.\n\nYou should transfer the user to a human agent if and only if the request cannot be handled within the scope of your actions. To transfer, first make a tool call to transfer_to_human_agents, and then send the message 'YOU ARE BEING TRANSFERRED TO A HUMAN AGENT. PLEASE HOLD ON.' to the user.\n\n## Domain basic\n\n- All times in the database are EST and 24 hour based. For example \"02:30:00\" means 2:30 AM EST.\n\n### User\n\nEach user has a profile containing:\n\n- unique user id\n- email\n- default address\n- payment methods.\n\nThere are three types of payment methods: **gift card**, **paypal account**, **credit card**.\n\n### Product\n\nOur retail store has 50 types of products.\n\nFor each **type of product**, there are **variant items** of different **options**.\n\nFor example, for a 't-shirt' product, there could be a variant item with option 'color blue size M', and another variant item with option 'color red size L'.\n\nEach product has the following attributes:\n\n- unique product id\n- name\n- list of variants\n\nEach variant item has the following attributes:\n\n- unique item id\n- information about the value of the product options for this item.\n- availability\n- price\n\nNote: Product ID and Item ID have no relations and should not be confused!\n\n### Order\n\nEach order has the following attributes:\n\n- unique order id\n- user id\n- address\n- items ordered\n- status\n- fullfilments info (tracking id and item ids)\n- payment history\n\nThe status of an order can be: **pending**, **processed**, **delivered**, or **cancelled**.\n\nOrders can have other optional attributes based on the actions that have been taken (cancellation reason, which items have been exchanged, what was the exchane price difference etc)\n\n## Generic action rules\n\nGenerally, you can only take action on pending or delivered orders.\n\nExchange or modify order tools can only be called once per order. Be sure that all items to be changed are collected into a list before making the tool call!!!\n\n## Cancel pending order\n\nAn order can only be cancelled if its status is 'pending', and you should check its status before taking the action.\n\nThe ticket must clearly specify the order id and the reason (either 'no longer needed' or 'ordered by mistake') for cancellation. Other reasons are not acceptable.\n\nAfter cancellation is executed, the order status will be changed to 'cancelled', and the total will be refunded via the original payment method immediately if it is gift card, otherwise in 5 to 7 business days.\n\n## Modify pending order\n\nAn order can only be modified if its status is 'pending', and you should check its status before taking the action.\n\nFor a pending order, you can take actions to modify its shipping address, payment method, or product item options, but nothing else.\n\n### Modify payment\n\nThe user can only choose a single payment method different from the original payment method.\n\nIf the user wants the modify the payment method to gift card, it must have enough balance to cover the total amount.\n\nAfter modification is executed, the order status will be kept as 'pending'. The original payment method will be refunded immediately if it is a gift card, otherwise it will be refunded within 5 to 7 business days.\n\n### Modify items\n\nThis action can only be called once, and will change the order status to 'pending (items modifed)'. The agent will not be able to modify or cancel the order anymore. So you must ensure all details are fully specified in the ticket and be cautious before taking this action. In particular, ensure all items to be modified are provided before making the tool call.\n\nFor a pending order, each item can be modified to an available new item of the same product but of different product option. There cannot be any change of product types, e.g. modify shirt to shoe.\n\nThe user must provide a payment method to pay or receive refund of the price difference. If the user provides a gift card, it must have enough balance to cover the price difference.\n\n## Return delivered order\n\nAn order can only be returned if its status is 'delivered', and you should check its status before taking the action.\n\nThe ticket must clearly specify the order id and the list of items to be returned.\n\nThe user needs to provide a payment method to receive the refund.\n\nThe refund must either go to the original payment method, or an existing gift card.\n\nAfter the return is executed, the order status will be changed to 'return requested', and the user will receive an email regarding how to return items.\n\n## Exchange delivered order\n\nAn order can only be exchanged if its status is 'delivered', and you should check its status before taking the action. In particular, ensure the ticket has provided all items to be exchanged.\n\nFor a delivered order, each item can be exchanged to an available new item of the same product but of different product option. There cannot be any change of product types, e.g. modify shirt to shoe.\n\nThe user must provide a payment method to pay or receive refund of the price difference. If the user provides a gift card, it must have enough balance to cover the price difference.\n\nAfter the exchange is executed, the order status will be changed to 'exchange requested', and the user will receive an email regarding how to return items. There is no need to place a new order.\n\n"
+      },
+      {
+        "role": "user",
+        "content": "Reason for call:\nYou received your order #W2378156 and wish to exchange the mechanical keyboard for the same one but with clicky switches and the smart thermostat for one compatible with Google Home instead of Apple HomeKit. If there is no keyboard that is clicky, RGB backlight, full size, you'd go for no backlight.\n\nKnown info:\nYou are Yusuf Rossi in zip code 19122.\n\nResolve this ticket completely using the tools as needed. When you are done, send a single final message to the user summarizing what you did and answering their needs"
+      }
+    ],
+    "temperature": 0,
+    "chat_template_kwargs": {
+      "enable_thinking": true
+    },
+    "extra_body": {
+      "chat_template_kwargs": {
+        "enable_thinking": true
+      }
+    },
+    "max_tokens": 8192,
+    "top_p": 0.95,
+    "skip_special_tokens": false,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "calculate",
+          "description": "Calculate the result of a mathematical expression.",
+          "parameters": {
+            "properties": {
+              "expression": {
+                "description": "The mathematical expression to calculate, such as '2 + 2'. The expression can contain numbers, operators (+, -, *, /), parentheses, and spaces.",
+                "title": "Expression",
+                "type": "string"
+              }
+            },
+            "required": [
+              "expression"
+            ],
+            "title": "parameters",
+            "type": "object"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "cancel_pending_order",
+          "description": "Cancel a pending order.",
+          "parameters": {
+            "properties": {
+              "order_id": {
+                "description": "The order id, such as '#W0000000'. Be careful there is a '#' symbol at the beginning of the order id.",
+                "title": "Order Id",
+                "type": "string"
+              },
+              "reason": {
+                "description": "The reason for cancellation, which should be either 'no longer needed' or 'ordered by mistake'.",
+                "title": "Reason",
+                "type": "string"
+              }
+            },
+            "required": [
+              "order_id",
+              "reason"
+            ],
+            "title": "parameters",
+            "type": "object"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "exchange_delivered_order_items",
+          "description": "Exchange items in a delivered order to new items of the same product type.",
+          "parameters": {
+            "properties": {
+              "order_id": {
+                "description": "The order id, such as '#W0000000'. Be careful there is a '#' symbol at the beginning of the order id.",
+                "title": "Order Id",
+                "type": "string"
+              },
+              "item_ids": {
+                "description": "The item ids to be exchanged, each such as '1008292230'. There could be duplicate items in the list.",
+                "items": {
+                  "type": "string"
+                },
+                "title": "Item Ids",
+                "type": "array"
+              },
+              "new_item_ids": {
+                "description": "The item ids to be exchanged for, each such as '1008292230'.\nThere could be duplicate items in the list. Each new item id should match the item id\nin the same position and be of the same product.",
+                "items": {
+                  "type": "string"
+                },
+                "title": "New Item Ids",
+                "type": "array"
+              },
+              "payment_method_id": {
+                "description": "The payment method id to pay or receive refund for the item price difference,\nsuch as 'gift_card_0000000' or 'credit_card_0000000'.",
+                "title": "Payment Method Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "order_id",
+              "item_ids",
+              "new_item_ids",
+              "payment_method_id"
+            ],
+            "title": "parameters",
+            "type": "object"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "find_user_id_by_name_zip",
+          "description": "Find user id by first name, last name, and zip code. If the user is not found, the function\n\nwill return an error message.",
+          "parameters": {
+            "properties": {
+              "first_name": {
+                "description": "The first name of the customer, such as 'John'.",
+                "title": "First Name",
+                "type": "string"
+              },
+              "last_name": {
+                "description": "The last name of the customer, such as 'Doe'.",
+                "title": "Last Name",
+                "type": "string"
+              },
+              "zip": {
+                "description": "The zip code of the customer, such as '12345'.",
+                "title": "Zip",
+                "type": "string"
+              }
+            },
+            "required": [
+              "first_name",
+              "last_name",
+              "zip"
+            ],
+            "title": "parameters",
+            "type": "object"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "find_user_id_by_email",
+          "description": "Find user id by email. If the user is not found, the function will return an error message.",
+          "parameters": {
+            "properties": {
+              "email": {
+                "description": "The email of the user, such as 'something@example.com'.",
+                "title": "Email",
+                "type": "string"
+              }
+            },
+            "required": [
+              "email"
+            ],
+            "title": "parameters",
+            "type": "object"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "get_order_details",
+          "description": "Get the status and details of an order.",
+          "parameters": {
+            "properties": {
+              "order_id": {
+                "description": "The order id, such as '#W0000000'. Be careful there is a '#' symbol at the beginning of the order id.",
+                "title": "Order Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "order_id"
+            ],
+            "title": "parameters",
+            "type": "object"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "get_product_details",
+          "description": "Get the inventory details of a product.",
+          "parameters": {
+            "properties": {
+              "product_id": {
+                "description": "The product id, such as '6086499569'. Be careful the product id is different from the item id.",
+                "title": "Product Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "product_id"
+            ],
+            "title": "parameters",
+            "type": "object"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "get_item_details",
+          "description": "Get the inventory details of an item.",
+          "parameters": {
+            "properties": {
+              "item_id": {
+                "description": "The item id, such as '6086499569'. Be careful the item id is different from the product id.",
+                "title": "Item Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "item_id"
+            ],
+            "title": "parameters",
+            "type": "object"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "get_user_details",
+          "description": "Get the details of a user, including their orders.",
+          "parameters": {
+            "properties": {
+              "user_id": {
+                "description": "The user id, such as 'sara_doe_496'.",
+                "title": "User Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "user_id"
+            ],
+            "title": "parameters",
+            "type": "object"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "list_all_product_types",
+          "description": "List the name and product id of all product types.\n\nEach product type has a variety of different items with unique item ids and options.\nThere are only 50 product types in the store.",
+          "parameters": {
+            "properties": {},
+            "title": "parameters",
+            "type": "object"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "modify_pending_order_address",
+          "description": "Modify the shipping address of a pending order.",
+          "parameters": {
+            "properties": {
+              "order_id": {
+                "description": "The order id, such as '#W0000000'. Be careful there is a '#' symbol at the beginning of the order id.",
+                "title": "Order Id",
+                "type": "string"
+              },
+              "address1": {
+                "description": "The first line of the address, such as '123 Main St'.",
+                "title": "Address1",
+                "type": "string"
+              },
+              "address2": {
+                "description": "The second line of the address, such as 'Apt 1' or ''.",
+                "title": "Address2",
+                "type": "string"
+              },
+              "city": {
+                "description": "The city, such as 'San Francisco'.",
+                "title": "City",
+                "type": "string"
+              },
+              "state": {
+                "description": "The state, such as 'CA'.",
+                "title": "State",
+                "type": "string"
+              },
+              "country": {
+                "description": "The country, such as 'USA'.",
+                "title": "Country",
+                "type": "string"
+              },
+              "zip": {
+                "description": "The zip code, such as '12345'.",
+                "title": "Zip",
+                "type": "string"
+              }
+            },
+            "required": [
+              "order_id",
+              "address1",
+              "address2",
+              "city",
+              "state",
+              "country",
+              "zip"
+            ],
+            "title": "parameters",
+            "type": "object"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "modify_pending_order_items",
+          "description": "Modify items in a pending order to new items of the same product type",
+          "parameters": {
+            "properties": {
+              "order_id": {
+                "description": "The order id, such as '#W0000000'. Be careful there is a '#' symbol at the beginning of the order id.",
+                "title": "Order Id",
+                "type": "string"
+              },
+              "item_ids": {
+                "description": "The item ids to be modified, each such as '1008292230'. There could be duplicate items in the list.",
+                "items": {
+                  "type": "string"
+                },
+                "title": "Item Ids",
+                "type": "array"
+              },
+              "new_item_ids": {
+                "description": "The item ids to be modified for, each such as '1008292230'. There could be duplicate items in the list. Each new item id should match the item id in the same position and be of the same product.",
+                "items": {
+                  "type": "string"
+                },
+                "title": "New Item Ids",
+                "type": "array"
+              },
+              "payment_method_id": {
+                "description": "The payment method id to pay or receive refund for the item price difference, such as 'gift_card_0000000' or 'credit_card_0000000'.",
+                "title": "Payment Method Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "order_id",
+              "item_ids",
+              "new_item_ids",
+              "payment_method_id"
+            ],
+            "title": "parameters",
+            "type": "object"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "modify_pending_order_payment",
+          "description": "Modify the payment method of a pending order.",
+          "parameters": {
+            "properties": {
+              "order_id": {
+                "description": "The order id, such as '#W0000000'. Be careful there is a '#' symbol at the beginning of the order id.",
+                "title": "Order Id",
+                "type": "string"
+              },
+              "payment_method_id": {
+                "description": "The payment method id to pay or receive refund for the item price difference, such as 'gift_card_0000000' or 'credit_card_0000000'.",
+                "title": "Payment Method Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "order_id",
+              "payment_method_id"
+            ],
+            "title": "parameters",
+            "type": "object"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "modify_user_address",
+          "description": "Modify the default address of a user.",
+          "parameters": {
+            "properties": {
+              "user_id": {
+                "description": "The user id, such as 'sara_doe_496'.",
+                "title": "User Id",
+                "type": "string"
+              },
+              "address1": {
+                "description": "The first line of the address, such as '123 Main St'.",
+                "title": "Address1",
+                "type": "string"
+              },
+              "address2": {
+                "description": "The second line of the address, such as 'Apt 1' or ''.",
+                "title": "Address2",
+                "type": "string"
+              },
+              "city": {
+                "description": "The city, such as 'San Francisco'.",
+                "title": "City",
+                "type": "string"
+              },
+              "state": {
+                "description": "The state, such as 'CA'.",
+                "title": "State",
+                "type": "string"
+              },
+              "country": {
+                "description": "The country, such as 'USA'.",
+                "title": "Country",
+                "type": "string"
+              },
+              "zip": {
+                "description": "The zip code, such as '12345'.",
+                "title": "Zip",
+                "type": "string"
+              }
+            },
+            "required": [
+              "user_id",
+              "address1",
+              "address2",
+              "city",
+              "state",
+              "country",
+              "zip"
+            ],
+            "title": "parameters",
+            "type": "object"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "return_delivered_order_items",
+          "description": "Return some items of a delivered order.\n\nThe order status will be changed to 'return requested'.",
+          "parameters": {
+            "properties": {
+              "order_id": {
+                "description": "The order id, such as '#W0000000'. Be careful there is a '#' symbol at the beginning of the order id.",
+                "title": "Order Id",
+                "type": "string"
+              },
+              "item_ids": {
+                "description": "The item ids to be returned, each such as '1008292230'. There could be duplicate items in the list.",
+                "items": {
+                  "type": "string"
+                },
+                "title": "Item Ids",
+                "type": "array"
+              },
+              "payment_method_id": {
+                "description": "The payment method id to pay or receive refund for the item price difference, such as 'gift_card_0000000' or 'credit_card_0000000'.",
+                "title": "Payment Method Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "order_id",
+              "item_ids",
+              "payment_method_id"
+            ],
+            "title": "parameters",
+            "type": "object"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "transfer_to_human_agents",
+          "description": "Transfer the user to a human agent, with a summary of the user's issue.",
+          "parameters": {
+            "properties": {
+              "summary": {
+                "description": "A summary of the user's issue.",
+                "title": "Summary",
+                "type": "string"
+              }
+            },
+            "required": [
+              "summary"
+            ],
+            "title": "parameters",
+            "type": "object"
+          }
+        }
+      }
+    ]
+  },
+  "response": {
+    "id": "chatcmpl-bb19afe7e5b89e8f",
+    "object": "chat.completion",
+    "created": 1775722225,
+    "model": "gemma4-26b-fp8",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": null,
+          "refusal": null,
+          "annotations": null,
+          "audio": null,
+          "function_call": null,
+          "tool_calls": [
+            {
+              "id": "chatcmpl-tool-a90ec93f49ea8548",
+              "type": "function",
+              "function": {
+                "name": "find_user_id_by_name_zip",
+                "arguments": "{\"first_name\": \"Yusuf\", \"last_name\": \"Rossi\", \"zip\": \"19122\"}"
+              }
+            }
+          ],
+          "reasoning": "The user, Yusuf Rossi, wants to exchange items in order #W2378156.\nThe items to exchange are:\n1. A mechanical keyboard for a version with \"clicky switches\".\n   - Preference: clicky switches, RGB backlight, full size.\n   - Fallback: clicky switches, no backlight, full size.\n2. A smart thermostat for one compatible with Google Home instead of Apple HomeKit.\n\nFirst, I need to authenticate the user.\nI have the name \"Yusuf Rossi\" and zip code \"19122\".\nI'll use `find_user_id_by_name_zip` to get the user ID.\n\nThen, I'll get the order details for #W2378156 using `get_order_details`.\nI need to check if the order status is 'delivered' because exchanges are for delivered orders.\n\nOnce I have the order details, I'll identify the item IDs for the mechanical keyboard and the smart thermostat.\n\nFor the mechanical keyboard:\n- I'll need to find the product ID for the mechanical keyboard.\n- I'll look at the variants of that product to find the ones that match the user's criteria.\n- Criteria 1: clicky switches, RGB backlight, full size.\n- Criteria 2 (fallback): clicky switches, no backlight, full size.\n\nFor the smart thermostat:\n- I'll need to find the product ID for the smart thermostat.\n- I'll look at the variants to find one compatible with Google Home (and not Apple HomeKit).\n\nAfter finding the new item IDs, I'll need to calculate the price difference.\nThe user must provide a payment method for the difference. I'll check the user's profile for available payment methods using `get_user_details`.\n\nFinally, I'll call `exchange_delivered_order_items`.\n\nLet's start by authenticating the user."
+        },
+        "logprobs": null,
+        "finish_reason": "tool_calls",
+        "stop_reason": 50,
+        "token_ids": null
+      }
+    ],
+    "service_tier": null,
+    "system_fingerprint": null,
+    "usage": {
+      "prompt_tokens": 4379,
+      "total_tokens": 4852,
+      "completion_tokens": 473,
+      "prompt_tokens_details": null
+    },
+    "prompt_logprobs": null,
+    "prompt_token_ids": null,
+    "kv_transfer_params": null
+  }
+}

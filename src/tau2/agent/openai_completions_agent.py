@@ -20,14 +20,24 @@ llm_args keys
   openai_api_key         : str   — not used for /v1/completions (auth via URL)
   openai_model           : str   — model name
   temperature            : float — default 0.0
+  top_p                  : float — optional, forwarded to /v1/completions
+  top_k                  : int   — optional, vLLM-style sampling cap
+                          (on vLLM, if temperature≈0, greedy mode resets top_p/top_k
+                          in SamplingParams — see vLLM ``sampling_params.py``)
   max_tokens             : int   — default 2048
+  logprobs               : bool|int — if true, sends integer logprobs (see top_logprobs)
+  top_logprobs           : int   — when logprobs is true, sets logprobs N (default 5)
   seed                   : int   — -1 = fresh random seed
+  skip_special_tokens    : bool  — forwarded to /v1/completions (default False);
+                                   also read from chat_template_kwargs if unset
   stop_tokens            : list  — default ["<turn|>"]
   enable_thinking        : bool  — default True (adds <|think|> to system block)
   injection_prefix       : str   — appended after <|turn>model\\n on the FIRST
                                    call per user turn (step 0 only); None = off
-  jinja_template_path    : str   — path to .jinja file; embedded fallback used
-                                   when absent or file not found
+  jinja_template_path    : str   — path to .jinja file (required)
+  continue_on_length     : bool  — if true, when finish_reason is ``length``, append
+                                   output to prompt and request again (default False)
+  max_length_continuations : int — max extra completion calls when continuing (default 8)
 """
 
 from __future__ import annotations
@@ -92,8 +102,8 @@ def _unescape_output(text: str) -> str:
 # Client-side Jinja2 rendering
 # ---------------------------------------------------------------------------
 
-def _load_template(template_path: str | None = None) -> Any:
-    """Load the Gemma4 Jinja template. Falls back to embedded copy."""
+def _load_template(template_path: str) -> Any:
+    """Load the Gemma4 Jinja template from the given path."""
     try:
         from jinja2 import BaseLoader, Environment, Undefined
     except ImportError as e:
@@ -102,16 +112,13 @@ def _load_template(template_path: str | None = None) -> Any:
             "Install with: uv add jinja2"
         ) from e
 
-    raw = None
-    pre_escaped = False
-    if template_path:
-        p = Path(template_path)
-        if p.exists():
-            raw = p.read_text()
-
-    if raw is None:
-        raw = _EMBEDDED_TEMPLATE
-        pre_escaped = True  # embedded template already uses placeholder names
+    p = Path(template_path)
+    if not p.exists():
+        raise FileNotFoundError(
+            f"jinja_template_path not found: {template_path!r}. "
+            "Set jinja_template_path in agent_llm_args to a valid .jinja file."
+        )
+    raw = p.read_text()
 
     env = Environment(
         loader=BaseLoader(),
@@ -119,8 +126,7 @@ def _load_template(template_path: str | None = None) -> Any:
         undefined=Undefined,
     )
     env.globals["bos_token"] = "<bos>"
-    escaped = raw if pre_escaped else _escape_template(raw)
-    return env.from_string(escaped)
+    return env.from_string(_escape_template(raw))
 
 
 def render_prompt(
@@ -128,7 +134,7 @@ def render_prompt(
     tools: list[dict[str, Any]] | None,
     enable_thinking: bool,
     injection_prefix: str | None,
-    template_path: str | None,
+    template_path: str,
 ) -> str:
     """Render the full prompt string client-side."""
     tmpl = _load_template(template_path)
@@ -209,6 +215,45 @@ def parse_completion(
     return reasoning, tool_calls, content
 
 
+def _clean_completion_chunk_text(raw: str) -> str:
+    """Strip known empty thought markers before concatenating continuation chunks."""
+    raw = raw.replace("<|channel>thought<channel|>", "")
+    raw = raw.replace("<|channel>thought\n<channel|>", "")
+    return raw
+
+
+def _merge_openai_completion_predictions(preds: list[dict[str, Any]]) -> dict[str, Any]:
+    """
+    Combine multiple /v1/completions JSON responses into one OpenAI-shaped dict:
+    concatenated choice text, summed usage, last choice metadata otherwise.
+    """
+    if not preds:
+        return {}
+    if len(preds) == 1:
+        return preds[0]
+    texts: list[str] = []
+    prompt_sum = completion_sum = total_sum = 0
+    last = preds[-1]
+    for p in preds:
+        ch0 = (p.get("choices") or [{}])[0]
+        texts.append(ch0.get("text") or "")
+        u = p.get("usage") or {}
+        prompt_sum += int(u.get("prompt_tokens") or 0)
+        completion_sum += int(u.get("completion_tokens") or 0)
+        total_sum += int(u.get("total_tokens") or 0)
+    lc = (last.get("choices") or [{}])[0]
+    merged_choice = {
+        **lc,
+        "text": "".join(texts),
+        "finish_reason": lc.get("finish_reason"),
+    }
+    merged_usage = {**(last.get("usage") or {})}
+    merged_usage["prompt_tokens"] = prompt_sum
+    merged_usage["completion_tokens"] = completion_sum
+    merged_usage["total_tokens"] = total_sum or (prompt_sum + completion_sum)
+    return {**last, "choices": [merged_choice], "usage": merged_usage}
+
+
 # ---------------------------------------------------------------------------
 # Agent
 # ---------------------------------------------------------------------------
@@ -286,12 +331,29 @@ class OpenAICompletionsAgent(LLMAgent):
         start_time = time.perf_counter()
         runtime_seed = resolve_runtime_seed(llm_args)
 
+        chat_template_kwargs: dict = llm_args.get("chat_template_kwargs") or {}
         temperature = float(llm_args.get("temperature", 0.0) or 0.0)
         max_tokens = int(llm_args.get("max_tokens") or 2048)
         stop_tokens: list[str] = list(llm_args.get("stop_tokens") or ["<turn|>"])
-        enable_thinking = bool(llm_args.get("enable_thinking", True))
-        injection_prefix: str | None = llm_args.get("injection_prefix") or None
-        template_path: str | None = llm_args.get("jinja_template_path") or None
+        enable_thinking = bool(
+            llm_args.get("enable_thinking", chat_template_kwargs.get("enable_thinking", True))
+        )
+        skip_special_tokens = bool(
+            llm_args.get(
+                "skip_special_tokens",
+                chat_template_kwargs.get("skip_special_tokens", False),
+            )
+        )
+        injection_prefix: str | None = (
+            llm_args.get("injection_prefix")
+            or chat_template_kwargs.get("injection_prefix")
+            or None
+        )
+        template_path: str = llm_args.get("jinja_template_path") or ""
+        if not template_path:
+            raise ValueError(
+                "jinja_template_path must be set in agent_llm_args for openai_completions_agent."
+            )
 
         openai_tools = [tool.openai_schema for tool in self.tools] if self.tools else []
 
@@ -320,32 +382,100 @@ class OpenAICompletionsAgent(LLMAgent):
             "max_tokens":  max_tokens,
             "temperature": temperature,
             "stop":        stop_tokens,
-            "skip_special_tokens": False,
+            "skip_special_tokens": skip_special_tokens,
             "include_stop_str_in_output": True,
         }
         if runtime_seed is not None:
             payload["seed"] = int(runtime_seed)
 
+        top_p = llm_args.get("top_p")
+        if top_p is not None:
+            payload["top_p"] = float(top_p)
+        top_k = llm_args.get("top_k")
+        if top_k is not None:
+            payload["top_k"] = int(top_k)
+
+        # /v1/completions expects ``logprobs`` as a positive int (top-N per position).
+        # Mirror chat-style YAML: logprobs: true + top_logprobs: N.
+        lp = llm_args.get("logprobs")
+        top_lp = llm_args.get("top_logprobs")
+        if lp is True or (isinstance(lp, str) and str(lp).lower() in ("true", "1", "yes")):
+            n = int(top_lp) if top_lp is not None else 5
+            if n > 0:
+                payload["logprobs"] = n
+        elif isinstance(lp, (int, float)) and int(lp) > 0:
+            payload["logprobs"] = int(lp)
+        elif top_lp is not None and int(top_lp) > 0:
+            payload["logprobs"] = int(top_lp)
+
+        # vLLM: temperature below ~1e-5 triggers greedy sampling and overwrites
+        # top_p → 1.0 and top_k → 0 inside SamplingParams (server logs show that).
+        _greedy_eps = 1e-5
+        if temperature < _greedy_eps and (
+            llm_args.get("top_p") is not None or llm_args.get("top_k") is not None
+        ):
+            logger.debug(
+                "openai_completions_agent: vLLM greedy (temperature≈0) resets top_p/top_k "
+                "in SamplingParams; request body still has top_p={} top_k={}",
+                payload.get("top_p"),
+                payload.get("top_k"),
+            )
+
         logger.debug(
             "[openai_completions_agent] calling model={} temperature={} seed={} "
-            "prompt_len={} active_prefix={}",
+            "prompt_len={} active_prefix={} payload_top_p={} payload_top_k={}",
             model, temperature, runtime_seed, len(prompt_str),
             repr(active_prefix[:40]) if active_prefix else None,
+            payload.get("top_p"),
+            payload.get("top_k"),
         )
 
-        pred = _completions_generate_with_logfire(
-            base_url=base_url,
-            model=model,
-            payload=payload,
-            api_messages=api_messages,
-            openai_tools=openai_tools or None,
-            raw_input_prompt=prompt_str,
-            active_prefix=active_prefix,
-        )
+        continue_on_length = bool(llm_args.get("continue_on_length", False))
+        _mlc = llm_args.get("max_length_continuations")
+        max_length_continuations = max(0, int(8 if _mlc is None else _mlc))
+
+        pred_list: list[dict[str, Any]] = []
+        chunk_texts: list[str] = []
+        current_prompt = prompt_str
+        continuations_done = 0
+
+        while True:
+            payload["prompt"] = current_prompt
+            pred = _completions_generate_with_logfire(
+                base_url=base_url,
+                model=model,
+                payload=payload,
+                api_messages=api_messages,
+                openai_tools=openai_tools or None,
+                raw_input_prompt=current_prompt,
+                active_prefix=active_prefix if continuations_done == 0 else None,
+            )
+            pred_list.append(pred)
+            choices = pred.get("choices") or []
+            chunk = (choices[0].get("text") or "") if choices else ""
+            chunk_texts.append(chunk)
+            finish_reason = (choices[0].get("finish_reason") or "").lower() if choices else ""
+
+            if (
+                not continue_on_length
+                or finish_reason != "length"
+                or continuations_done >= max_length_continuations
+            ):
+                break
+
+            current_prompt = current_prompt + chunk
+            continuations_done += 1
+            logger.debug(
+                "openai_completions_agent: continue_on_length segment {} / {} (prompt_len={})",
+                continuations_done,
+                max_length_continuations,
+                len(current_prompt),
+            )
+
+        pred = _merge_openai_completion_predictions(pred_list)
         elapsed = time.perf_counter() - start_time
 
-        choices = pred.get("choices") or []
-        raw_text = (choices[0].get("text") or "") if choices else ""
+        raw_text = _clean_completion_chunk_text("".join(chunk_texts))
 
         reasoning, tool_calls_raw, content = parse_completion(
             raw_output=raw_text,
@@ -376,6 +506,14 @@ class OpenAICompletionsAgent(LLMAgent):
             )
             content = "(No response from model)"
 
+        raw_data: dict[str, Any] = {
+            "completions_response": pred,
+            "raw_text": raw_text,
+        }
+        if len(pred_list) > 1:
+            raw_data["completions_responses"] = pred_list
+            raw_data["length_continuation_segments"] = len(pred_list)
+
         return AssistantMessage(
             role="assistant",
             content=content,
@@ -383,7 +521,7 @@ class OpenAICompletionsAgent(LLMAgent):
             tool_calls=tool_calls or None,
             usage=usage,
             cost=cost,
-            raw_data={"completions_response": pred, "raw_text": raw_text},
+            raw_data=raw_data,
             generation_time_seconds=elapsed,
         )
 
@@ -496,11 +634,16 @@ def _completions_generate_with_logfire(
         if logfire is not None and span is not None and hasattr(span, "set_attribute"):
             span.set_attribute("llm.model_name", model)
             span.set_attribute("llm.system", "openai")
+            span.set_attribute("gen_ai.operation.name", "completions")
+            span.set_attribute("gen_ai.request.model", model)
+            span.set_attribute("gen_ai.response.model", model)
+            span.set_attribute("gen_ai.system", "openai")
             span.set_attribute("gen_ai.usage.input_tokens", prompt_tokens)
             span.set_attribute("gen_ai.usage.output_tokens", completion_tokens)
             span.set_attribute("gen_ai.usage.total_tokens", total_tokens)
             span.set_attribute("llm.token_count.prompt", prompt_tokens)
             span.set_attribute("llm.token_count.completion", completion_tokens)
+            span.set_attribute("llm.token_count.total", total_tokens)
             span.set_attribute("tool_round", tool_round)
             span.set_attribute("all_messages_events", all_messages_events)
             span.set_attribute("request_data", request_data)
@@ -521,8 +664,10 @@ def _completions_generate_with_logfire(
                 tool_round=tool_round,
                 finish_reason=finish_reason,
                 injection=repr(active_prefix[:60]) if active_prefix else None,
+                input_token_count=prompt_tokens,
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
                 raw_input_prompt=raw_input_prompt,
                 raw_output=raw_text,
                 raw_response=pred,
@@ -543,323 +688,3 @@ def create_openai_completions_agent(tools, domain_policy, **kwargs):
         llm_args=kwargs.get("llm_args"),
     )
 
-
-# ---------------------------------------------------------------------------
-# Embedded Gemma4 chat template (fallback when jinja_template_path not set)
-# ---------------------------------------------------------------------------
-
-_EMBEDDED_TEMPLATE = r"""{%- macro format_parameters(properties, required) -%}
-    {%- set standard_keys = ['description', 'type', 'properties', 'required', 'nullable'] -%}
-    {%- set ns = namespace(found_first=false) -%}
-    {%- for key, value in properties | dictsort -%}
-        {%- set add_comma = false -%}
-        {%- if key not in standard_keys -%}
-            {%- if ns.found_first %},{% endif -%}
-            {%- set ns.found_first = true -%}
-            {{ key }}:{
-            {%- if value['description'] -%}
-                description:GEMMATOK_QUOTE{{ value['description'] }}GEMMATOK_QUOTE
-                {%- set add_comma = true -%}
-            {%- endif -%}
-            {%- if value['type'] | upper == 'STRING' -%}
-                {%- if value['enum'] -%}
-                    {%- if add_comma %},{%- else -%} {%- set add_comma = true -%} {% endif -%}
-                    enum:{{ format_argument(value['enum']) }}
-                {%- endif -%}
-            {%- elif value['type'] | upper == 'ARRAY' -%}
-                {%- if value['items'] is mapping and value['items'] -%}
-                    {%- if add_comma %},{%- else -%} {%- set add_comma = true -%} {% endif -%}
-                    items:{
-                    {%- set ns_items = namespace(found_first=false) -%}
-                    {%- for item_key, item_value in value['items'] | dictsort -%}
-                        {%- if item_value is not none -%}
-                            {%- if ns_items.found_first %},{% endif -%}
-                            {%- set ns_items.found_first = true -%}
-                            {%- if item_key == 'properties' -%}
-                                properties:{
-                                {%- if item_value is mapping -%}
-                                    {{- format_parameters(item_value, value['items']['required'] | default([])) -}}
-                                {%- endif -%}
-                                }
-                            {%- elif item_key == 'required' -%}
-                                required:[
-                                {%- for req_item in item_value -%}
-                                    GEMMATOK_QUOTE{{- req_item -}}GEMMATOK_QUOTE
-                                    {%- if not loop.last %},{% endif -%}
-                                {%- endfor -%}
-                                ]
-                            {%- elif item_key == 'type' -%}
-                                {%- if item_value is string -%}
-                                    type:{{ format_argument(item_value | upper) }}
-                                {%- else -%}
-                                    type:{{ format_argument(item_value | map('upper') | list) }}
-                                {%- endif -%}
-                            {%- else -%}
-                                {{ item_key }}:{{ format_argument(item_value) }}
-                            {%- endif -%}
-                        {%- endif -%}
-                    {%- endfor -%}
-                    }
-                {%- endif -%}
-            {%- endif -%}
-            {%- if value['nullable'] %}
-                {%- if add_comma %},{%- else -%} {%- set add_comma = true -%} {% endif -%}
-                nullable:true
-            {%- endif -%}
-            {%- if value['type'] | upper == 'OBJECT' -%}
-                {%- if value['properties'] is defined and value['properties'] is mapping -%}
-                    {%- if add_comma %},{%- else -%} {%- set add_comma = true -%} {% endif -%}
-                    properties:{
-                    {{- format_parameters(value['properties'], value['required'] | default([])) -}}
-                    }
-                {%- elif value is mapping -%}
-                    {%- if add_comma %},{%- else -%} {%- set add_comma = true -%} {% endif -%}
-                    properties:{
-                    {{- format_parameters(value, value['required'] | default([])) -}}
-                    }
-                {%- endif -%}
-                {%- if value['required'] -%}
-                    {%- if add_comma %},{%- else -%} {%- set add_comma = true -%} {% endif -%}
-                    required:[
-                    {%- for item in value['required'] | default([]) -%}
-                        GEMMATOK_QUOTE{{- item -}}GEMMATOK_QUOTE
-                        {%- if not loop.last %},{% endif -%}
-                    {%- endfor -%}
-                    ]
-                {%- endif -%}
-            {%- endif -%}
-            {%- if add_comma %},{%- else -%} {%- set add_comma = true -%} {% endif -%}
-            type:GEMMATOK_QUOTE{{ value['type'] | upper }}GEMMATOK_QUOTE}
-        {%- endif -%}
-    {%- endfor -%}
-{%- endmacro -%}
-{%- macro format_function_declaration(tool_data) -%}
-    declaration:{{- tool_data['function']['name'] -}}{description:GEMMATOK_QUOTE{{- tool_data['function']['description'] -}}GEMMATOK_QUOTE
-    {%- set params = tool_data['function']['parameters'] -%}
-    {%- if params -%}
-        ,parameters:{
-        {%- if params['properties'] -%}
-            properties:{ {{- format_parameters(params['properties'], params['required']) -}} },
-        {%- endif -%}
-        {%- if params['required'] -%}
-            required:[
-            {%- for item in params['required'] -%}
-                GEMMATOK_QUOTE{{- item -}}GEMMATOK_QUOTE
-                {{- ',' if not loop.last -}}
-            {%- endfor -%}
-            ],
-        {%- endif -%}
-        {%- if params['type'] -%}
-            type:GEMMATOK_QUOTE{{- params['type'] | upper -}}GEMMATOK_QUOTE}
-        {%- endif -%}
-    {%- endif -%}
-    }
-{%- endmacro -%}
-{%- macro format_argument(argument, escape_keys=True) -%}
-    {%- if argument is string -%}
-        {{- 'GEMMATOK_QUOTE' + argument + 'GEMMATOK_QUOTE' -}}
-    {%- elif argument is boolean -%}
-        {{- 'true' if argument else 'false' -}}
-    {%- elif argument is mapping -%}
-        {{- '{' -}}
-        {%- set ns = namespace(found_first=false) -%}
-        {%- for key, value in argument | dictsort -%}
-            {%- if ns.found_first %},{% endif -%}
-            {%- set ns.found_first = true -%}
-            {%- if escape_keys -%}
-                {{- 'GEMMATOK_QUOTE' + key + 'GEMMATOK_QUOTE' -}}
-            {%- else -%}
-                {{- key -}}
-            {%- endif -%}
-            :{{- format_argument(value, escape_keys=escape_keys) -}}
-        {%- endfor -%}
-        {{- '}' -}}
-    {%- elif argument is sequence -%}
-        {{- '[' -}}
-        {%- for item in argument -%}
-            {{- format_argument(item, escape_keys=escape_keys) -}}
-            {%- if not loop.last %},{% endif -%}
-        {%- endfor -%}
-        {{- ']' -}}
-    {%- else -%}
-        {{- argument -}}
-    {%- endif -%}
-{%- endmacro -%}
-{%- macro strip_thinking(text) -%}
-    {%- set ns = namespace(result='') -%}
-    {%- for part in text.split('GEMMATOK_CHAN_CLOSE') -%}
-        {%- if 'GEMMATOK_CHAN_OPEN' in part -%}
-            {%- set ns.result = ns.result + part.split('GEMMATOK_CHAN_OPEN')[0] -%}
-        {%- else -%}
-            {%- set ns.result = ns.result + part -%}
-        {%- endif -%}
-    {%- endfor -%}
-    {{- ns.result | trim -}}
-{%- endmacro -%}
-
-{%- macro format_tool_response_block(tool_name, response) -%}
-    {{- 'GEMMATOK_TRESP_OPEN' -}}
-    {%- if response is mapping -%}
-        {{- 'response:' + tool_name + '{' -}}
-        {%- for key, value in response | dictsort -%}
-            {{- key -}}:{{- format_argument(value, escape_keys=False) -}}
-            {%- if not loop.last %},{% endif -%}
-        {%- endfor -%}
-        {{- '}' -}}
-    {%- else -%}
-        {{- 'response:' + tool_name + '{value:' + format_argument(response, escape_keys=False) + '}' -}}
-    {%- endif -%}
-    {{- 'GEMMATOK_TRESP_CLOSE' -}}
-{%- endmacro -%}
-
-{%- set ns = namespace(prev_message_type=None) -%}
-{%- set loop_messages = messages -%}
-{{- bos_token -}}
-{%- if (enable_thinking is defined and enable_thinking) or tools or messages[0]['role'] in ['system', 'developer'] -%}
-    {{- 'GEMMATOK_TURN_OPENsystem\n' -}}
-    {%- if enable_thinking is defined and enable_thinking -%}
-        {{- 'GEMMATOK_THINK\n' -}}
-        {%- set ns.prev_message_type = 'think' -%}
-    {%- endif -%}
-    {%- if messages[0]['role'] in ['system', 'developer'] -%}
-        {{- messages[0]['content'] | trim -}}
-        {%- set loop_messages = messages[1:] -%}
-    {%- endif -%}
-    {%- if tools -%}
-        {%- for tool in tools %}
-            {{- 'GEMMATOK_TOOL_OPEN' -}}
-            {{- format_function_declaration(tool) | trim -}}
-            {{- 'GEMMATOK_TOOL_CLOSE' -}}
-        {%- endfor %}
-        {%- set ns.prev_message_type = 'tool' -%}
-    {%- endif -%}
-    {{- 'GEMMATOK_TURN_CLOSE\n' -}}
-{%- endif %}
-
-{%- set ns_turn = namespace(last_user_idx=-1) -%}
-{%- for i in range(loop_messages | length) -%}
-    {%- if loop_messages[i]['role'] == 'user' -%}
-        {%- set ns_turn.last_user_idx = i -%}
-    {%- endif -%}
-{%- endfor -%}
-
-{%- for message in loop_messages -%}
-    {%- if message['role'] != 'tool' -%}
-    {%- set ns.prev_message_type = None -%}
-    {%- set role = 'model' if message['role'] == 'assistant' else message['role'] -%}
-    {%- set prev_nt = namespace(role=None, found=false) -%}
-    {%- if loop.index0 > 0 -%}
-        {%- for j in range(loop.index0 - 1, -1, -1) -%}
-            {%- if not prev_nt.found -%}
-                {%- if loop_messages[j]['role'] != 'tool' -%}
-                    {%- set prev_nt.role = loop_messages[j]['role'] -%}
-                    {%- set prev_nt.found = true -%}
-                {%- endif -%}
-            {%- endif -%}
-        {%- endfor -%}
-    {%- endif -%}
-    {%- set continue_same_model_turn = (role == 'model' and prev_nt.role == 'assistant') -%}
-    {%- if not continue_same_model_turn -%}
-        {{- 'GEMMATOK_TURN_OPEN' + role + '\n' }}
-    {%- endif -%}
-
-    {%- set thinking_text = message.get('reasoning') or message.get('reasoning_content') -%}
-    {%- if thinking_text and loop.index0 > ns_turn.last_user_idx and message.get('tool_calls') -%}
-        {{- 'GEMMATOK_CHAN_OPENthought\n' + thinking_text + '\nGEMMATOK_CHAN_CLOSE' -}}
-    {%- endif -%}
-
-        {%- if message['tool_calls'] -%}
-            {%- for tool_call in message['tool_calls'] -%}
-                {%- set function = tool_call['function'] -%}
-                {{- 'GEMMATOK_TCALL_OPENcall:' + function['name'] + '{' -}}
-                {%- if function['arguments'] is mapping -%}
-                    {%- set ns_args = namespace(found_first=false) -%}
-                    {%- for key, value in function['arguments'] | dictsort -%}
-                        {%- if ns_args.found_first %},{% endif -%}
-                        {%- set ns_args.found_first = true -%}
-                        {{- key -}}:{{- format_argument(value, escape_keys=False) -}}
-                    {%- endfor -%}
-                {%- elif function['arguments'] is string -%}
-                    {{- function['arguments'] -}}
-                {%- endif -%}
-                {{- '}GEMMATOK_TCALL_CLOSE' -}}
-            {%- endfor -%}
-            {%- set ns.prev_message_type = 'tool_call' -%}
-        {%- endif -%}
-
-        {%- set ns_tr_out = namespace(flag=false) -%}
-        {%- if message.get('tool_responses') -%}
-            {%- for tool_response in message['tool_responses'] -%}
-                {{- format_tool_response_block(tool_response['name'] | default('unknown'), tool_response['response']) -}}
-                {%- set ns_tr_out.flag = true -%}
-                {%- set ns.prev_message_type = 'tool_response' -%}
-            {%- endfor -%}
-        {%- elif message.get('tool_calls') -%}
-            {%- set ns_tool_scan = namespace(stopped=false) -%}
-            {%- for k in range(loop.index0 + 1, loop_messages | length) -%}
-                {%- if ns_tool_scan.stopped -%}
-                {%- elif loop_messages[k]['role'] != 'tool' -%}
-                    {%- set ns_tool_scan.stopped = true -%}
-                {%- else -%}
-                    {%- set follow = loop_messages[k] -%}
-                    {%- set ns_tname = namespace(name=follow.get('name') | default('unknown')) -%}
-                    {%- for tc in message['tool_calls'] -%}
-                        {%- if tc.get('id') == follow.get('tool_call_id') -%}
-                            {%- set ns_tname.name = tc['function']['name'] -%}
-                        {%- endif -%}
-                    {%- endfor -%}
-                    {%- set tool_body = follow.get('content') -%}
-                    {%- if tool_body is string -%}
-                        {{- format_tool_response_block(ns_tname.name, tool_body) -}}
-                    {%- elif tool_body is sequence and tool_body is not string -%}
-                        {%- set ns_txt = namespace(s='') -%}
-                        {%- for part in tool_body -%}
-                            {%- if part.get('type') == 'text' -%}
-                                {%- set ns_txt.s = ns_txt.s + (part.get('text') | default('')) -%}
-                            {%- endif -%}
-                        {%- endfor -%}
-                        {{- format_tool_response_block(ns_tname.name, ns_txt.s) -}}
-                    {%- else -%}
-                        {{- format_tool_response_block(ns_tname.name, tool_body) -}}
-                    {%- endif -%}
-                    {%- set ns_tr_out.flag = true -%}
-                    {%- set ns.prev_message_type = 'tool_response' -%}
-                {%- endif -%}
-            {%- endfor -%}
-        {%- endif -%}
-
-        {%- if message['content'] is string -%}
-            {%- if role == 'model' -%}
-                {{- strip_thinking(message['content']) -}}
-            {%- else -%}
-                {{- message['content'] | trim -}}
-            {%- endif -%}
-        {%- elif message['content'] is sequence -%}
-            {%- for item in message['content'] -%}
-                {%- if item['type'] == 'text' -%}
-                    {%- if role == 'model' -%}
-                        {{- strip_thinking(item['text']) -}}
-                    {%- else -%}
-                        {{- item['text'] | trim -}}
-                    {%- endif -%}
-                {%- endif -%}
-            {%- endfor -%}
-        {%- endif -%}
-
-    {%- if ns.prev_message_type == 'tool_call' and not ns_tr_out.flag -%}
-        {{- 'GEMMATOK_TRESP_OPEN' -}}
-    {%- elif not (ns_tr_out.flag and not message.get('content')) -%}
-        {{- 'GEMMATOK_TURN_CLOSE\n' -}}
-    {%- endif -%}
-    {%- endif -%}
-{%- endfor -%}
-
-{%- if add_generation_prompt -%}
-    {%- if ns.prev_message_type != 'tool_response' and ns.prev_message_type != 'tool_call' -%}
-        {{- 'GEMMATOK_TURN_OPENmodel\n' -}}
-        {%- if not enable_thinking | default(false) -%}
-            {{- 'GEMMATOK_CHAN_OPENthought\nGEMMATOK_CHAN_CLOSE' -}}
-        {%- endif -%}
-    {%- endif -%}
-{%- endif -%}
-"""

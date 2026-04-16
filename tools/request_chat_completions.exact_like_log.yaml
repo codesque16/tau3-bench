@@ -1,0 +1,24 @@
+vertex_openai_chat_url: "https://gemma4-26b-fp8-gcreopmlnq-uc.a.run.app"
+vertex_openai_chat_model: "gemma4-26b-fp8"
+timeout_s: 180
+
+system_prompt_path: "data/tau2/domains/retail/policy_solo.md"
+user_prompt: |
+  Reason for call:
+  You received your order #W2378156 and wish to exchange the mechanical keyboard for the same one but with clicky switches and the smart thermostat for one compatible with Google Home instead of Apple HomeKit. If there is no keyboard that is clicky, RGB backlight, full size, you'd go for no backlight.
+
+  Known info:
+  You are Yusuf Rossi in zip code 19122.
+
+  Resolve this ticket completely using the tools as needed. When you are done, send a single final message to the user summarizing what you did and answering their needs
+  Think step by step and reason about the next steps and the tools to use.
+
+include_retail_tools: true
+
+vertex_endpoint_parameters:
+  temperature: 0
+  max_tokens: 8192
+  top_p: 0.95
+  skip_special_tokens: false
+  chat_template_kwargs:
+    enable_thinking: false

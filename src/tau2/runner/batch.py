@@ -18,10 +18,12 @@ import random
 import threading
 import uuid
 import warnings
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextvars import ContextVar
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
+
+import opentelemetry.context as _otel_ctx
 
 from loguru import logger
 
@@ -856,48 +858,187 @@ def run_tasks(
             experiment_total=1,
             mode="conversation",
         )
-        trial_concurrency = max(1, int(getattr(config, "trial_concurrency", 1) or 1))
+        max_concurrency = max(1, int(config.max_concurrency))
 
-        def _run_trial(trial: int) -> list[SimulationRun]:
-            trial_args = args_by_trial.get(trial, [])
-            if not trial_args:
-                return []
-            trial_results: list[SimulationRun] = []
-            with tracer.trial_span(trial=trial + 1, seed=seeds[trial]):
-                task_executor = ThreadPoolExecutor(max_workers=config.max_concurrency)
-                try:
-                    trial_futures = {}
-                    for arg in trial_args:
-                        ctx = contextvars.copy_context()
-                        fut = task_executor.submit(
-                            lambda a=arg, c=ctx: c.run(_run_tracked, *a)
-                        )
-                        trial_futures[fut] = arg
-                    for future in as_completed(trial_futures):
-                        trial_results.append(future.result())
-                finally:
-                    task_executor.shutdown(wait=not shutdown_event.is_set(), cancel_futures=shutdown_event.is_set())
-            return trial_results
+        # ── scheduling.log ────────────────────────────────────────────────
+        # JSONL file written to save_dir on every submit/complete event so
+        # you can tail -f it while a run is live.
+        import time as _time
 
-        trial_executor = ThreadPoolExecutor(
-            max_workers=min(trial_concurrency, max(1, len(args_by_trial)))
+        _sched_log_fh: Any = None
+        _sched_log_lock = threading.Lock()
+
+        if save_dir is not None:
+            save_dir.mkdir(parents=True, exist_ok=True)
+            _sched_log_path = save_dir / "scheduling.log"
+            _sched_log_fh = open(_sched_log_path, "a", buffering=1)  # line-buffered
+
+        def _slog(event: str, **fields: Any) -> None:
+            if _sched_log_fh is None:
+                return
+            record = {"ts": _time.time(), "event": event, **fields}
+            with _sched_log_lock:
+                _sched_log_fh.write(json.dumps(record) + "\n")
+
+        # ─────────────────────────────────────────────────────────────────
+
+        # Capture the OTEL context right now (run_span is current, no trial
+        # spans yet).  We will attach this exact context before opening each
+        # trial span so that every trial span is a sibling under run_span
+        # rather than nested inside the previous one.
+        _run_otel_ctx = _otel_ctx.get_current()
+
+        # Open one trial span per active trial, all as siblings under run_span.
+        # attach/detach around each __enter__ resets the "current span" back to
+        # run_span before the next trial span is created, preventing nesting.
+        active_trials = [t for t in range(config.num_trials) if args_by_trial.get(t)]
+        trial_span_cms: dict[int, Any] = {}
+        trial_cv_ctxs: dict[int, Any] = {}  # contextvars.Context with trial span active
+
+        for trial in active_trials:
+            token = _otel_ctx.attach(_run_otel_ctx)
+            try:
+                cm = tracer.trial_span(trial=trial + 1, seed=seeds[trial])
+                cm.__enter__()
+                # Snapshot the contextvars state now — OTEL current span is this
+                # trial's span.  Tasks submitted for this trial will run inside it.
+                trial_cv_ctxs[trial] = contextvars.copy_context()
+                trial_span_cms[trial] = cm
+            finally:
+                # Detach restores the OTEL context to _run_otel_ctx so the next
+                # iteration also starts from run_span as parent.
+                _otel_ctx.detach(token)
+
+        # Single global work queue: one entry per (trial, task) combination,
+        # preserving original per-trial ordering.
+        all_queued: list[tuple[int, tuple]] = []
+        for trial in range(config.num_trials):
+            for arg in args_by_trial.get(trial, []):
+                all_queued.append((trial, arg))
+
+        total_work = len(all_queued)
+        logger.info(
+            "Batch scheduling: max_concurrency={} total_work={} trials={}",
+            max_concurrency,
+            total_work,
+            active_trials,
         )
+        _slog(
+            "batch_start",
+            max_concurrency=max_concurrency,
+            total_work=total_work,
+            trials=active_trials,
+        )
+
+        # Results grouped by trial for correct result aggregation.
+        trial_results: dict[int, list[SimulationRun]] = {t: [] for t in active_trials}
+
+        shared_executor = ThreadPoolExecutor(max_workers=max_concurrency)
+        in_flight: dict = {}   # future -> (trial, arg)
+        done_count = 0
+
+        def _submit_one() -> bool:
+            if not all_queued or shutdown_event.is_set():
+                return False
+            trial, arg = all_queued.pop(0)
+            # arg = (task, seed, ...) — task_id is at arg[0].id
+            task_id = getattr(arg[0], "id", None) if arg else None
+            # Create a fresh copy of the trial's context snapshot for this task.
+            # We cannot share the same Context object across concurrent tasks —
+            # Context.run() raises RuntimeError if the same object is entered by
+            # more than one thread at a time.  Calling .run(copy_context) briefly
+            # enters the snapshot to produce a new independent copy that carries
+            # the correct trial span as its OTEL current span.
+            base_ctx = trial_cv_ctxs.get(trial)
+            ctx = base_ctx.run(contextvars.copy_context) if base_ctx is not None else contextvars.copy_context()
+            fut = shared_executor.submit(
+                lambda a=arg, c=ctx: c.run(_run_tracked, *a)
+            )
+            in_flight[fut] = (trial, arg)
+            snap = monitor.snapshot()
+            logger.info(
+                "Submit: task={} trial={} in_flight={} queued_remaining={} done={} running={} peak={}",
+                task_id,
+                trial + 1,
+                len(in_flight),
+                len(all_queued),
+                done_count,
+                snap["running"],
+                snap["peak_running"],
+            )
+            _slog(
+                "submit",
+                task_id=task_id,
+                trial=trial + 1,
+                in_flight=len(in_flight),
+                queued_remaining=len(all_queued),
+                done=done_count,
+                total=total_work,
+                running=snap["running"],
+                peak_running=snap["peak_running"],
+            )
+            return True
+
         try:
-            trial_futures: dict = {}
-            for trial in range(config.num_trials):
-                if not args_by_trial.get(trial):
-                    continue
-                ctx = contextvars.copy_context()
-                fut = trial_executor.submit(lambda t=trial, c=ctx: c.run(_run_trial, t))
-                trial_futures[fut] = trial
-            for trial_future in as_completed(trial_futures):
-                simulation_results.simulations.extend(trial_future.result())
+            # Fill the window to max_concurrency.
+            while len(in_flight) < max_concurrency and _submit_one():
+                pass
+
+            while in_flight:
+                if shutdown_event.is_set():
+                    break
+                done_set, _ = wait(set(in_flight.keys()), return_when=FIRST_COMPLETED)
+                for future in done_set:
+                    trial, arg = in_flight.pop(future)
+                    result = future.result()
+                    trial_results[trial].append(result)
+                    done_count += 1
+                    snap = monitor.snapshot()
+                    logger.info(
+                        "Complete: task={} trial={} in_flight={} queued_remaining={} "
+                        "done={}/{} running={} peak={} started={} finished={} "
+                        "completed={} event_seq={}",
+                        result.task_id,
+                        result.trial,
+                        len(in_flight),
+                        len(all_queued),
+                        done_count,
+                        total_work,
+                        snap["running"],
+                        snap["peak_running"],
+                        snap["started"],
+                        snap["finished"],
+                        snap["completed"],
+                        snap["event_seq"],
+                    )
+                    _slog(
+                        "complete",
+                        task_id=result.task_id,
+                        trial=result.trial,
+                        in_flight=len(in_flight),
+                        queued_remaining=len(all_queued),
+                        done=done_count,
+                        total=total_work,
+                        running=snap["running"],
+                        peak_running=snap["peak_running"],
+                        started=snap["started"],
+                        finished=snap["finished"],
+                        completed=snap["completed"],
+                        event_seq=snap["event_seq"],
+                    )
+                    # Immediately refill the freed slot.
+                    while len(in_flight) < max_concurrency and _submit_one():
+                        pass
+
+            for trial, results in trial_results.items():
+                simulation_results.simulations.extend(results)
+
         except KeyboardInterrupt:
             ConsoleDisplay.console.print(
                 "\n[bold red]Ctrl+C received — cancelling remaining tasks...[/bold red]"
             )
             shutdown_event.set()
-            trial_executor.shutdown(wait=False, cancel_futures=True)
+            shared_executor.shutdown(wait=False, cancel_futures=True)
 
             n = len(simulation_results.simulations)
             ConsoleDisplay.console.print(
@@ -906,14 +1047,22 @@ def run_tasks(
             )
             monitor.stop()
 
-            # Force-exit: background threads (litellm, websocket loops, etc.)
-            # hold the process alive and produce noisy errors during interpreter
-            # shutdown.  All completed results are already on disk via save_fn.
             os._exit(130)
         finally:
             monitor.stop()
             if not shutdown_event.is_set():
-                trial_executor.shutdown(wait=True)
+                shared_executor.shutdown(wait=True)
+            # Close trial spans (opened upfront as siblings under run_span).
+            for cm in trial_span_cms.values():
+                try:
+                    cm.__exit__(None, None, None)
+                except Exception:
+                    pass
+            if _sched_log_fh is not None:
+                try:
+                    _sched_log_fh.close()
+                except Exception:
+                    pass
 
         ConsoleDisplay.console.print(
             "\n[bold green]Successfully completed all simulations![/bold green]\n"
@@ -981,10 +1130,15 @@ def run_domain(config: RunConfig) -> Results:
     save_dir = DATA_DIR / "simulations" / run_name
     save_path = save_dir / "results.json"
 
-    # Voice runs use directory format (individual sim files) because voice
-    # simulations with tick data are very large; text runs use monolithic JSON.
+    # Directory format writes one file per simulation (O(1) append) with a
+    # lightweight index, so it scales well under high concurrency.  Monolithic
+    # JSON requires a read-parse-append-rewrite of the entire results file
+    # under a global lock on every task completion — this becomes the dominant
+    # bottleneck once 100+ results accumulate.  Use "dir" for voice runs
+    # (large tick data) and any run with high concurrency.
     is_voice = isinstance(config, VoiceRunConfig)
-    results_format = "dir" if is_voice else "json"
+    use_dir = is_voice or int(getattr(config, "max_concurrency", 1)) > 1
+    results_format = "dir" if use_dir else "json"
 
     # Run batch
     simulation_results = run_tasks(

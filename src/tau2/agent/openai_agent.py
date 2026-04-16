@@ -20,14 +20,21 @@ llm_args keys
   openai_api_key         : str   — API key (default "EMPTY" for vLLM)
   openai_model           : str   — model name sent in the JSON body (falls back to self.llm)
   temperature            : float — default 0.0
+  top_p                  : float — optional, forwarded to chat.completions
+  top_k                  : int   — optional, sent in extra_body (vLLM-style)
+                          (on vLLM, if temperature≈0, greedy mode resets top_p/top_k
+                          in SamplingParams — see vLLM ``sampling_params.py``)
   max_tokens             : int   — default 2048
   seed                   : int   — -1 = fresh random seed each call
   tool_choice            : str   — "auto" | "required" | "none" (default "auto")
+  logprobs               : bool|int — chat API: bool, or int>0 → logprobs true + top_logprobs
+  top_logprobs           : int   — paired with logprobs (capped at 20 for OpenAI-style APIs)
   chat_template_kwargs   : dict  — forwarded verbatim; supports
                                    enable_thinking, inject_thinking, injection_prefix
   log_raw_tokens         : bool  — if true, log input/output token IDs (DEBUG)
   log_raw_tokens_max_ids : int   — max token IDs to print (default 120)
-  skip_special_tokens    : bool  — passed to /render + chat completions (default False)
+  skip_special_tokens    : bool  — passed to /render + chat completions (default False);
+                                   also read from chat_template_kwargs if unset in llm_args
   pricing                : dict  — input_cost_per_million, output_cost_per_million,
                                    cached_input_cost_per_million (optional)
 """
@@ -168,16 +175,20 @@ class OpenAIAgent(LLMAgent):
 
         # Build the request body
         chat_template_kwargs: dict[str, Any] | None = llm_args.get("chat_template_kwargs") or None
-        skip_special_tokens = bool(llm_args.get("skip_special_tokens", False))
+        ctk: dict[str, Any] = chat_template_kwargs or {}
+        skip_special_tokens = bool(
+            llm_args.get("skip_special_tokens", ctk.get("skip_special_tokens", False))
+        )
         tool_choice = str(llm_args.get("tool_choice") or "auto")
         temperature = float(llm_args.get("temperature", 0.0) or 0.0)
         max_tokens = llm_args.get("max_tokens")
 
-        extra_body: dict[str, Any] = {}
+        extra_body: dict[str, Any] = {"skip_special_tokens": skip_special_tokens}
         if chat_template_kwargs:
             extra_body["chat_template_kwargs"] = chat_template_kwargs
-        if skip_special_tokens:
-            extra_body["skip_special_tokens"] = skip_special_tokens
+        top_k = llm_args.get("top_k")
+        if top_k is not None:
+            extra_body["top_k"] = int(top_k)
 
         # Mirror TAU2_VLLM_MIRROR_CHAT_TEMPLATE_KWARGS_EXTRA_BODY behavior
         import os
@@ -196,12 +207,39 @@ class OpenAIAgent(LLMAgent):
         }
         if max_tokens is not None:
             create_kwargs["max_tokens"] = int(max_tokens)
+        top_p = llm_args.get("top_p")
+        if top_p is not None:
+            create_kwargs["top_p"] = float(top_p)
+
+        lp = llm_args.get("logprobs")
+        top_lp = llm_args.get("top_logprobs")
+        if lp is True or (isinstance(lp, str) and str(lp).lower() in ("true", "1", "yes")):
+            n = int(top_lp) if top_lp is not None else 5
+            create_kwargs["logprobs"] = True
+            create_kwargs["top_logprobs"] = min(max(n, 1), 20)
+        elif isinstance(lp, (int, float)) and int(lp) > 0:
+            create_kwargs["logprobs"] = True
+            create_kwargs["top_logprobs"] = min(int(lp), 20)
+        elif top_lp is not None and int(top_lp) > 0:
+            create_kwargs["logprobs"] = True
+            create_kwargs["top_logprobs"] = min(int(top_lp), 20)
+
+        _greedy_eps = 1e-5
+        if temperature < _greedy_eps and (
+            llm_args.get("top_p") is not None or llm_args.get("top_k") is not None
+        ):
+            logger.debug(
+                "openai_agent: vLLM greedy (temperature≈0) resets top_p/top_k in "
+                "SamplingParams; request sends top_p={} extra_body.top_k={}",
+                create_kwargs.get("top_p"),
+                extra_body.get("top_k"),
+            )
+
         if runtime_seed is not None:
             create_kwargs["seed"] = int(runtime_seed)
         if openai_tools:
             create_kwargs["tools"] = openai_tools  # type: ignore[assignment]
-        if extra_body:
-            create_kwargs["extra_body"] = extra_body
+        create_kwargs["extra_body"] = extra_body
 
         logger.debug(
             "[openai_agent] calling model={} temperature={} seed={} tool_choice={}",
