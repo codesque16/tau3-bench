@@ -541,14 +541,14 @@ runs:
     fresh: true
     num_trials: 4
     seed: -1
-    max_concurrency: 7
+    max_concurrency: 5
     agent_llm: gemma4-26b-openai
     agent_llm_args:
-      openai_base_url: "http://34.29.173.120:8000"   # vLLM server root
+      openai_base_url: "http://136.114.184.166:8000"   # vLLM server root
       openai_api_key: "EMPTY"                         # vLLM default
       openai_model: "google/gemma-4-26B-A4B-it"
       temperature: 0
-      max_tokens: 8192
+      max_tokens: 2048
       skip_special_tokens: true
       chat_template_kwargs:
         enable_thinking: true
@@ -564,6 +564,15 @@ runs:
     seed: -1
 
   # Gemma 4 26B — baseline thinking (no injection).
+  retail_solo_gemma4_26b_openai_agent_gepa_on_failures:
+    base_run: retail_solo_openai_agent_base
+    save_to: retail_solo_gemma4_26b_openai_agent_gepa_on_failures
+    # task_ids: ["0"]
+    fresh: true
+    retail_policy_path: data/tau2/domains/retail/policy_solo_gepa_on_failures.md
+    seed: -1
+
+  # Gemma 4 26B — baseline thinking (no injection).
   retail_solo_gemma4_26b_openai_agent_mermaid:
     base_run: retail_solo_openai_agent_base
     save_to: retail_solo_gemma4_26b_openai_agent
@@ -572,16 +581,100 @@ runs:
     seed: -1
     retail_policy_path: data/tau2/domains/retail/policy_mermaid_solo2.md
     agent_llm_args:
-      openai_base_url: "http://34.29.173.120:8000"   # vLLM server root
+      openai_base_url: "http://136.114.184.166:8000"   # vLLM server root
       openai_api_key: "EMPTY"                         # vLLM default
       openai_model: "google/gemma-4-26B-A4B-it"
       temperature: 0
-      max_tokens: 8192
+      max_tokens: 2048
       skip_special_tokens: true
       chat_template_kwargs:
         enable_thinking: true
         add_generation_prompt: true
         # injection_prefix: "<|channel>thought\nLet me first start by the reasoning on the SOP graph. I will focus on the relevant nodes, fetch relevant policies and tool_hints as per the instructions and structure.\nSOP_POLICIES:\n\tGLOBAL:\n\t\trelevant_policies:"
+
+  # Gemma 4 26B — baseline thinking (no injection).
+  retail_solo_gemma4_26b_openai_agent_mermaid_no_thinking_instr:
+    base_run: retail_solo_openai_agent_base
+    save_to: retail_solo_gemma4_26b_openai_agent_mermaid_no_thinking_instr
+    # task_ids: ["0"]
+    fresh: true
+    max_concurrency: 7
+    seed: -1
+    retail_policy_path: data/tau2/domains/retail/policy_mermaid_solo2_no_thinking_instruction.md
+    agent_llm_args:
+      openai_base_url: "http://34.136.109.83:8000"   # vLLM server root
+      openai_api_key: "EMPTY"                         # vLLM default
+      openai_model: "google/gemma-4-26B-A4B-it"
+      temperature: 0
+      max_tokens: 2048
+      skip_special_tokens: true
+      chat_template_kwargs:
+        enable_thinking: true
+        add_generation_prompt: true
+        # injection_prefix: "<|channel>thought\nLet me first start by the reasoning on the SOP graph. I will focus on the relevant nodes, fetch relevant policies and tool_hints as per the instructions and structure.\nSOP_POLICIES:\n\tGLOBAL:\n\t\trelevant_policies:"
+
+  retail_solo_gemma4_26b_openai_agent_mermaid_no_thinking_instr_injection_tool_resp:
+    base_run: retail_solo_openai_agent_base
+    save_to: retail_solo_gemma4_26b_openai_agent_mermaid_no_thinking_instr_injection_tool_resp
+    task_ids: ["0"]
+    fresh: true
+    max_concurrency: 7
+    seed: -1
+    retail_policy_path: data/tau2/domains/retail/policy_mermaid_solo2_no_thinking_instruction.md
+    agent_llm_args:
+      openai_base_url: "http://34.136.109.83:8000"   # vLLM server root
+      openai_api_key: "EMPTY"                         # vLLM default
+      openai_model: "google/gemma-4-26B-A4B-it"
+      temperature: 0
+      max_tokens: 2048
+      skip_special_tokens: true
+      chat_template_kwargs:
+        enable_thinking: true
+        add_generation_prompt: true
+        injection_prefix: "<|channel>thought\nLet me first start by the reasoning on the SOP graph. I will focus on the relevant nodes, fetch relevant policies and tool_hints as per the instructions and structure.\nSOP_POLICIES:\n\tGLOBAL:\n\t\trelevant_policies:"
+
+
+  retail_solo_gemma4_26b_openai_agent_mermaid_no_thinking_instr_injection:
+    base_run: retail_solo_openai_agent_base
+    save_to: retail_solo_gemma4_26b_openai_agent_mermaid_no_thinking_instr_injection
+    # task_ids: ["0"]
+    fresh: true
+    max_concurrency: 7
+    seed: -1
+    retail_policy_path: data/tau2/domains/retail/policy_mermaid_solo2_no_thinking_instruction.md
+    agent_llm_args:
+      openai_base_url: "http://136.111.121.136:8000"   # vLLM server root
+      openai_api_key: "EMPTY"                         # vLLM default
+      openai_model: "google/gemma-4-26B-A4B-it"
+      temperature: 0
+      max_tokens: 2048
+      skip_special_tokens: true
+      chat_template_kwargs:
+        enable_thinking: true
+        add_generation_prompt: true
+        injection_prefix: "<|channel>thought\nLet me first start by the reasoning on the SOP graph. I will focus on the relevant nodes, fetch relevant policies and tool_hints as per the instructions and structure.\nSOP_POLICIES:\n\tGLOBAL:\n\t\trelevant_policies:"
+
+
+
+  retail_solo_gemma4_26b_openai_agent_mermaid_injection:
+    base_run: retail_solo_openai_agent_base
+    save_to: retail_solo_gemma4_26b_openai_agent_mermaid_injection
+    # task_ids: ["0"]
+    fresh: true
+    seed: -1
+    retail_policy_path: data/tau2/domains/retail/policy_mermaid_solo2.md
+    agent_llm_args:
+      openai_base_url: "http://34.136.109.83:8000"   # vLLM server root
+      openai_api_key: "EMPTY"                         # vLLM default
+      openai_model: "google/gemma-4-26B-A4B-it"
+      temperature: 0
+      max_tokens: 2048
+      skip_special_tokens: true
+      chat_template_kwargs:
+        enable_thinking: true
+        add_generation_prompt: true
+        injection_prefix: "<|channel>thought\nLet me first start by the reasoning on the SOP graph. I will focus on the relevant nodes, fetch relevant policies and tool_hints as per the instructions and structure.\nSOP_POLICIES:\n\tGLOBAL:\n\t\trelevant_policies:"
+
 
   # Gemma 4 26B — baseline thinking (no injection).
   retail_solo_gemma4_26b_openai_agent_mermaid_with_thinking:
@@ -642,7 +735,7 @@ runs:
     max_concurrency: 10
     agent_llm: gemma4-26b-completions
     agent_llm_args:
-      openai_base_url: "http://34.29.173.120:8000"
+      openai_base_url: "http://136.111.121.136:8000"
       openai_model: "google/gemma-4-26B-A4B-it"
       temperature: 0
       max_tokens: 16384  
@@ -654,7 +747,7 @@ runs:
   retail_solo_gemma4_26b_completions_agent:
     base_run: retail_solo_completions_agent_base
     save_to: retail_solo_gemma4_26b_completions_agent
-    # task_ids: ["0"]
+    task_ids: ["0"]
     fresh: true
     seed: -1
 
@@ -662,15 +755,19 @@ runs:
   retail_solo_gemma4_26b_completions_agent_inject:
     base_run: retail_solo_completions_agent_base
     save_to: retail_solo_gemma4_26b_completions_agent_inject
+    retail_policy_path: data/tau2/domains/retail/policy_mermaid_solo2_no_thinking_instruction.md
+    # task_ids: ["0"]
     fresh: true
+    num_trials: 4
     seed: -1
+    max_concurrency: 30
     agent_llm_args:
-      openai_base_url: "http://34.29.173.120:8000"
+      openai_base_url: "http://35.224.147.230:8000"
       openai_model: "google/gemma-4-26B-A4B-it"
       temperature: 0
       max_tokens: 3072
       enable_thinking: true
-      injection_prefix: "<|channel>thought\n"
+      injection_prefix: "<|channel>thought\nLet me first start by the reasoning on the SOP graph. I will focus on the relevant nodes, fetch relevant policies and tool_hints as per the instructions and structure.\nSOP_POLICIES:\n\tGLOBAL:\n\t\trelevant_policies:"
 
   # Gemma 4 26B — custom prefix injection.
   retail_solo_gemma4_26b_completions_agent_inject_prefix:

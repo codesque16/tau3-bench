@@ -1,0 +1,139 @@
+run_concurrency: 6
+
+runs:
+  # Base template for openai_agent solo runs.
+  airline_solo_openai_agent_original_policy_completions:
+    domain: airline
+    assistant_solo_mode: true
+    num_trials: 4
+    # task_ids: ["0","1","2"]
+    trial_concurrency: 4
+    max_concurrency: 180
+    verbose_logs: true
+    seed: -1
+    continue_on_length: false
+    max_length_continuations: 1   # optional; omit for default 8
+    agent: openai_completions_agent
+    save_to: airline_solo_openai_agent_original_policy_completions
+    airline_policy_path: data/tau2/domains/airline/policy_solo.md
+    fresh: true
+    agent_llm: gemma4-26b-openai
+    agent_llm_args:
+      openai_base_url: "http://34.132.197.165:8000"   # vLLM server root
+      openai_api_key: "EMPTY"                         # vLLM default
+      openai_model: "google/gemma-4-26B-A4B-it"
+      logprobs: true
+      top_logprobs: 10
+      temperature: 0
+      top_p: 0.95
+      top_k: 64
+      max_tokens: 4096
+      # skip_special_tokens: true
+      jinja_template_path: "../scripts/gcloud_scripts/gemma4_26b_injected_add_injection.jinja"
+      chat_template_kwargs:
+        enable_thinking: true
+        add_generation_prompt: true
+
+  airline_solo_openai_agent_mermaid_thinking_instructions_completions:
+    domain: airline
+    assistant_solo_mode: true
+    num_trials: 4
+    # task_ids: ["0","1","2"]
+    trial_concurrency: 4
+    max_concurrency: 30
+    verbose_logs: true
+    seed: -1
+    agent: openai_completions_agent
+    save_to: airline_solo_openai_agent_mermaid_thinking_instructions_completions
+    airline_policy_path: data/tau2/domains/airline/policy_mermaid_solo2.md
+    fresh: true
+    agent_llm: gemma4-26b-openai
+    agent_llm_args:
+      openai_base_url: "http://35.224.147.230:8000"   # vLLM server root
+      openai_api_key: "EMPTY"                         # vLLM default
+      openai_model: "google/gemma-4-26B-A4B-it"
+      temperature: 0
+      max_tokens: 2048
+      skip_special_tokens: true
+      jinja_template_path: "../scripts/gcloud_scripts/gemma4_26b_injected_add_injection.jinja"
+      chat_template_kwargs:
+        enable_thinking: true
+        add_generation_prompt: true
+
+  airline_solo_openai_agent_mermaid_thinking_instructions_injection_completions:
+    base_run: airline_solo_openai_agent_mermaid_thinking_instructions_completions
+    save_to: airline_solo_openai_agent_mermaid_thinking_instructions_injection_completions
+    airline_policy_path: data/tau2/domains/airline/policy_mermaid_solo2.md
+    fresh: true
+    assistant_solo_mode: true
+    # task_ids: ["0","1","2","3","4","5","6","7","8","9","10"]
+    seed: -1
+    agent_llm_args:
+      openai_base_url: "http://35.224.147.230:8000"   # vLLM server root
+      openai_api_key: "EMPTY"                         # vLLM default
+      openai_model: "google/gemma-4-26B-A4B-it"
+      temperature: 0
+      max_tokens: 2048
+      skip_special_tokens: false
+      chat_template_kwargs:
+        enable_thinking: true
+        add_generation_prompt: true
+        injection_prefix: "<|channel>thought\nLet me first start by the reasoning on the SOP graph. I will focus on the relevant nodes, fetch relevant policies and tool_hints as per the instructions and structure.\nSOP_POLICIES:\n\tGLOBAL:\n\t\trelevant_policies:"
+
+  airline_solo_openai_agent_mermaid_no_thinking_instructions_completions:
+    domain: airline
+    assistant_solo_mode: true
+    num_trials: 4
+    # task_ids: ["0","1","2"]
+    trial_concurrency: 4
+    max_concurrency: 180
+    verbose_logs: true
+    seed: -1
+    continue_on_length: false
+    max_length_continuations: 1   # optional; omit for default 8
+    agent: openai_completions_agent
+    save_to: airline_solo_openai_agent_mermaid_no_thinking_instructions_completions
+    airline_policy_path: data/tau2/domains/airline/policy_mermaid_solo2_no_thinking_instruction.md
+    fresh: true
+    agent_llm: gemma4-26b-openai
+    agent_llm_args:
+      openai_base_url: "http://34.132.197.165:8000"   # vLLM server root 
+      openai_api_key: "EMPTY"                         # vLLM default
+      openai_model: "google/gemma-4-26B-A4B-it"
+      logprobs: true
+      top_logprobs: 10
+      temperature: 0
+      top_p: 0.95
+      top_k: 64
+      max_tokens: 4096
+      skip_special_tokens: false
+      jinja_template_path: "../scripts/gcloud_scripts/gemma4_26b_injected_add_injection.jinja"
+      chat_template_kwargs:
+        enable_thinking: true
+        add_generation_prompt: true
+
+  airline_solo_openai_agent_mermaid_no_thinking_instructions_injection_completions:
+    base_run: airline_solo_openai_agent_mermaid_no_thinking_instructions_completions
+    save_to: airline_solo_openai_agent_mermaid_no_thinking_instructions_injection_completions
+    airline_policy_path: data/tau2/domains/airline/policy_mermaid_solo2_no_thinking_instruction.md
+    fresh: true
+    assistant_solo_mode: true
+    trial_concurrency: 4
+    max_concurrency: 180
+    # task_ids: ["0","1","2"]
+    seed: -1
+    continue_on_length: true
+    max_length_continuations: 8   # optional; omit for default 8
+    agent_llm_args:
+      openai_base_url: "http://34.132.197.165:8000"   # vLLM server root
+      openai_api_key: "EMPTY"                         # vLLM default
+      openai_model: "google/gemma-4-26B-A4B-it"
+      temperature: 0
+      top_p: 0.95
+      top_k: 64
+      max_tokens: 4096
+      skip_special_tokens: false
+      chat_template_kwargs:
+        enable_thinking: true
+        add_generation_prompt: true
+        injection_prefix: "<|channel>thought\nLet me first start by the reasoning on the SOP graph. I will focus on the relevant nodes, fetch relevant policies and tool_hints as per the instructions and structure.\nSOP_POLICIES:\n\tGLOBAL:\n\t\trelevant_policies:"
