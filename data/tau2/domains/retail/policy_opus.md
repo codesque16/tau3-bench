@@ -10,17 +10,17 @@ The `SOP Flowchart` below shows your full Standard Operating Procedure (SOP) wor
 
 **Node shapes by purpose:**
 
-| Shape    | Syntax     | Use for                              |
-| -------- | ---------- | ------------------------------------ |
-| Stadium  | `([text])` | Start, end, and terminal outcomes    |
-| Rectangle| `[text]`   | Actions, steps, collecting info      |
-| Rhombus  | `{text}`   | Checks, Decisions, intent routing    |
+
+| Shape     | Syntax     | Use for                           |
+| --------- | ---------- | --------------------------------- |
+| Stadium   | `([text])` | Start, end, and terminal outcomes |
+| Rectangle | `[text]`   | Actions, steps, collecting info   |
+| Rhombus   | `{text}`   | Checks, Decisions, intent routing |
+
 
 Edge conditions are written on the edges in the format `|condition|`. For example `A -->|condition| B` means that if the condition is true, the flow goes from step A to step B.
 
 ---
-
-# Retail Agent Rules
 
 ## SOP Global Policies
 
@@ -244,3 +244,6 @@ flowchart TD
     %% ---- Transfer ----
     TRANSFER --> TRANSFER_END([Human agent handoff complete])
 ```
+
+
+
