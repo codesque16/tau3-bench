@@ -260,6 +260,61 @@ def save_simulation_audio(
 
 
 # =============================================================================
+# Finish-reason helpers
+# =============================================================================
+
+
+def _simulation_hit_length(result: SimulationRun) -> bool:
+    """Return True if any assistant turn in the simulation stopped with finish_reason 'length'.
+
+    A turn counts as length-truncated if ANY of the following is true on its
+    ``raw_data``:
+      * ``raw_data["hit_length"]`` is truthy (explicit flag set by the openai
+        completions agent when any segment of a multi-call turn hit
+        finish_reason=='length'; survives a successful wrapped retry).
+      * The merged ``completions_response`` (or top-level litellm response)
+        has ``choices[0].finish_reason == 'length'``.
+      * Any per-segment entry in ``completions_responses`` has
+        ``choices[0].finish_reason == 'length'``.
+
+    The third check is what catches turns where a wrapped retry recovered:
+    the merged/top-level finish_reason is ``'stop'``, but at least one
+    individual segment was length-truncated.
+    """
+    for msg in result.messages or []:
+        if msg.role != "assistant":
+            continue
+        raw = getattr(msg, "raw_data", None) or {}
+        if not isinstance(raw, dict):
+            continue
+
+        if raw.get("hit_length"):
+            return True
+
+        # Merged response / litellm top-level response.
+        for source in (raw.get("completions_response"), raw):
+            if not isinstance(source, dict):
+                continue
+            choices = source.get("choices") or []
+            if choices and isinstance(choices[0], dict):
+                fr = str(choices[0].get("finish_reason") or "").lower()
+                if fr == "length":
+                    return True
+
+        # Per-segment list from the openai completions agent, in case the
+        # explicit flag got stripped somewhere in the pipeline.
+        for seg in raw.get("completions_responses") or []:
+            if not isinstance(seg, dict):
+                continue
+            choices = seg.get("choices") or []
+            if choices and isinstance(choices[0], dict):
+                fr = str(choices[0].get("finish_reason") or "").lower()
+                if fr == "length":
+                    return True
+    return False
+
+
+# =============================================================================
 # Per-task logging context manager
 # =============================================================================
 
@@ -604,7 +659,7 @@ def run_tasks(
         simulations=[],
     )
     tracer = LogfireRunTracer()
-    run_id = build_run_id(config, policy_name=infer_policy_name(config))
+    run_id = getattr(config, "run_name", None) or build_run_id(config, policy_name=infer_policy_name(config))
 
     # Checkpoint resume
     done_runs: set = set()
@@ -704,14 +759,19 @@ def run_tasks(
                 passed = bool(
                     result.reward_info is not None and result.reward_info.reward >= 1.0
                 )
+                hit_length = _simulation_hit_length(result)
+                base = f"Task:{task.id}"
+                if hit_length:
+                    base = f"{base}[length]"
                 tracer.finalize_span(
                     task_span,
-                    base_name=f"Task:{task.id}",
+                    base_name=base,
                     passed=passed,
                     task_id=str(task.id),
                     reward=(
                         result.reward_info.reward if result.reward_info is not None else None
                     ),
+                    hit_length=hit_length,
                 )
                 return result
 

@@ -35,9 +35,17 @@ llm_args keys
   injection_prefix       : str   — appended after <|turn>model\\n on the FIRST
                                    call per user turn (step 0 only); None = off
   jinja_template_path    : str   — path to .jinja file (required)
-  continue_on_length     : bool  — if true, when finish_reason is ``length``, append
-                                   output to prompt and request again (default False)
-  max_length_continuations : int — max extra completion calls when continuing (default 8)
+  continue_on_length     : bool  — if true, when finish_reason is ``length`` the
+                                   partial output is stripped of Gemma special
+                                   tokens, wrapped in a closed
+                                   ``<|channel>thought … Thought too long ...
+                                   TRUNCATED … <channel|>`` block, appended to
+                                   the prompt, and one more completion call is
+                                   made before falling back to normal flow
+                                   (default False)
+  max_length_continuations : int — max extra completion calls when continuing
+                                   (default 8). Set to 1 to do exactly one
+                                   wrapped retry per length hit.
 """
 
 from __future__ import annotations
@@ -220,6 +228,77 @@ def _clean_completion_chunk_text(raw: str) -> str:
     raw = raw.replace("<|channel>thought<channel|>", "")
     raw = raw.replace("<|channel>thought\n<channel|>", "")
     return raw
+
+
+# Composite Gemma tokens: a channel/turn opener immediately followed by its
+# role/channel label. If we only strip the bare ``<|channel>`` opener the
+# ``thought`` label is left behind as plain content; same for ``<|turn>model``
+# etc. List them explicitly so the longest-first sort guarantees they are
+# stripped before the plain ``<|channel>`` / ``<|turn>`` openers.
+_GEMMA_COMPOSITE_TOKENS: tuple[str, ...] = (
+    "<|channel>thought",
+    "<|turn>model",
+    "<|turn>user",
+    "<|turn>system",
+    "<|turn>assistant",
+)
+
+
+# Every Gemma special token we know about: the keys of the placeholder map
+# plus the composite ``opener+label`` forms above. Sorted longest-first so
+# that e.g. ``<|channel>thought`` is stripped before ``<|channel>`` and
+# ``<|tool_call>`` before ``<|tool>``.
+_GEMMA_SPECIAL_TOKENS: tuple[str, ...] = tuple(
+    sorted(
+        set(_PLACEHOLDER_MAP.keys()) | set(_GEMMA_COMPOSITE_TOKENS),
+        key=len,
+        reverse=True,
+    )
+)
+
+
+def _strip_gemma_special_tokens(text: str) -> str:
+    """Remove every known Gemma special token (``<|...>`` / ``<...|>``) and
+    its composite ``opener+label`` variants (e.g. ``<|channel>thought``,
+    ``<|turn>model``) from ``text``."""
+    for tok in _GEMMA_SPECIAL_TOKENS:
+        if tok in text:
+            text = text.replace(tok, "")
+    return text
+
+
+def _wrap_truncated_thought(chunk: str, has_open_thought: bool = False) -> str:
+    """
+    Build a closed thought block from a length-truncated completion chunk.
+
+    Gemma cut off mid-stream (``finish_reason == "length"``), so the chunk may
+    contain half-emitted special tokens that would confuse the parser or the
+    next call. We strip every known special token, then either:
+
+    - ``has_open_thought=True``: the prompt already ends with an open
+      ``<|channel>thought`` block (e.g. because ``injection_prefix`` seeded
+      one for this turn and this is the first length truncation). Only close
+      it — don't open another, or we'd nest openers.
+    - ``has_open_thought=False``: prompt has no open thought block, so we
+      emit a full ``<|channel>thought … <channel|>`` block.
+
+    Either way the closing block is tagged ``Thought too long ... TRUNCATED``
+    so the model can see its previous attempt was cut off and produce a fresh
+    final output on the next call.
+    """
+    stripped = _strip_gemma_special_tokens(chunk).strip()
+    if has_open_thought:
+        return (
+            f"{stripped}\n"
+            "Thought too long ... TRUNCATED\n"
+            "<channel|>"
+        )
+    return (
+        "<|channel>thought\n"
+        f"{stripped}\n"
+        "Thought too long ... TRUNCATED\n"
+        "<channel|>"
+    )
 
 
 def _merge_openai_completion_predictions(preds: list[dict[str, Any]]) -> dict[str, Any]:
@@ -453,24 +532,81 @@ class OpenAICompletionsAgent(LLMAgent):
             pred_list.append(pred)
             choices = pred.get("choices") or []
             chunk = (choices[0].get("text") or "") if choices else ""
-            chunk_texts.append(chunk)
             finish_reason = (choices[0].get("finish_reason") or "").lower() if choices else ""
+
+            if finish_reason == "length":
+                # Visible telemetry: a length truncation happened on this call,
+                # regardless of whether we're going to retry or not.
+                try:
+                    import logfire  # type: ignore
+
+                    logfire.info(
+                        "openai.completions.length_truncation",
+                        model=model,
+                        continue_on_length=continue_on_length,
+                        continuations_done=continuations_done,
+                        max_length_continuations=max_length_continuations,
+                        will_retry=bool(
+                            continue_on_length
+                            and continuations_done < max_length_continuations
+                        ),
+                        chunk_len=len(chunk),
+                        prompt_len=len(current_prompt),
+                    )
+                except Exception:
+                    pass
 
             if (
                 not continue_on_length
                 or finish_reason != "length"
                 or continuations_done >= max_length_continuations
             ):
+                chunk_texts.append(chunk)
                 break
 
-            current_prompt = current_prompt + chunk
+            # Length-truncated turn: strip Gemma special tokens from the partial
+            # output and either close the currently-open ``<|channel>thought``
+            # block (if injection_prefix opened one this turn and this is the
+            # first truncation) or wrap the chunk in a fresh
+            # ``<|channel>thought … <channel|>`` block. Tag the close with
+            # ``Thought too long ... TRUNCATED`` so the next call sees the
+            # previous attempt was cut off and can produce a fresh final output.
+            #
+            # ``active_prefix`` on the first call ends the rendered prompt with
+            # an open ``<|channel>thought\n{injection}…`` block, so on the very
+            # first length hit we only emit the closing side. Subsequent
+            # retries (``continuations_done > 0``) follow a ``<channel|>`` we
+            # already emitted, so a full fresh open+close wrap is correct.
+            has_open_thought = bool(active_prefix) and continuations_done == 0
+            wrapped = _wrap_truncated_thought(
+                chunk, has_open_thought=has_open_thought
+            )
+            chunk_texts.append(wrapped)
+            current_prompt = current_prompt + wrapped
             continuations_done += 1
-            logger.debug(
-                "openai_completions_agent: continue_on_length segment {} / {} (prompt_len={})",
+            logger.info(
+                "openai_completions_agent: length-truncated turn, wrapped as "
+                "TRUNCATED thought and retrying (segment {} / {}, prompt_len={})",
                 continuations_done,
                 max_length_continuations,
                 len(current_prompt),
             )
+            try:
+                import logfire  # type: ignore
+
+                logfire.info(
+                    "openai.completions.length_retry_attempt",
+                    model=model,
+                    segment=continuations_done,
+                    max_length_continuations=max_length_continuations,
+                    raw_chunk_len=len(chunk),
+                    wrapped_len=len(wrapped),
+                    new_prompt_len=len(current_prompt),
+                    has_open_thought=has_open_thought,
+                    wrapped_preview=wrapped[:400],
+                )
+            except Exception:
+                pass
 
         pred = _merge_openai_completion_predictions(pred_list)
         elapsed = time.perf_counter() - start_time
@@ -506,10 +642,28 @@ class OpenAICompletionsAgent(LLMAgent):
             )
             content = "(No response from model)"
 
+        # Record whether *any* segment in this turn hit ``finish_reason == "length"``
+        # so downstream consumers (e.g. _simulation_hit_length in batch.py) can
+        # still flag the turn as length-truncated even when the wrapped retry
+        # recovered and the final/merged prediction reports ``finish_reason == "stop"``.
+        hit_length_any = False
+        length_segment_indices: list[int] = []
+        for idx, p in enumerate(pred_list):
+            _choices = (p.get("choices") or [{}])
+            _fr = str((_choices[0] if _choices else {}).get("finish_reason") or "").lower()
+            if _fr == "length":
+                hit_length_any = True
+                length_segment_indices.append(idx)
+
         raw_data: dict[str, Any] = {
             "completions_response": pred,
             "raw_text": raw_text,
         }
+        if hit_length_any:
+            # Flag consumed by batch._simulation_hit_length so the task span keeps
+            # its ``[length]`` suffix regardless of whether the retry succeeded.
+            raw_data["hit_length"] = True
+            raw_data["length_segment_indices"] = length_segment_indices
         if len(pred_list) > 1:
             raw_data["completions_responses"] = pred_list
             raw_data["length_continuation_segments"] = len(pred_list)
@@ -628,7 +782,7 @@ def _completions_generate_with_logfire(
             "tool_calls": response_tool_calls or None,
         }
     }
-    request_data = {"model": model, "messages": input_messages_events}
+    # request_data = {"model": model, "messages": input_messages_events}
 
     with span_cm as span:
         if logfire is not None and span is not None and hasattr(span, "set_attribute"):
@@ -646,16 +800,16 @@ def _completions_generate_with_logfire(
             span.set_attribute("llm.token_count.total", total_tokens)
             span.set_attribute("tool_round", tool_round)
             span.set_attribute("all_messages_events", all_messages_events)
-            span.set_attribute("request_data", request_data)
+            # span.set_attribute("request_data", request_data)
             span.set_attribute("response_data", response_data)
-            span.set_attribute("input.value", {"messages": all_messages_events})
+            # span.set_attribute("input.value", {"messages": all_messages_events})
             span.set_attribute("output.value", response_data)
-            flat_attrs = _flatten_llm_messages_attrs(
-                all_messages_events=input_messages_events,
-                response_data=response_data,
-            )
-            for key, value in flat_attrs.items():
-                span.set_attribute(key, value)
+            # flat_attrs = _flatten_llm_messages_attrs(
+            #     all_messages_events=input_messages_events,
+            #     response_data=response_data,
+            # )
+            # for key, value in flat_attrs.items():
+            #     span.set_attribute(key, value)
 
         if logfire is not None:
             logfire.info(

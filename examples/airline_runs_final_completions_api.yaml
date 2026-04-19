@@ -18,7 +18,7 @@ runs:
     fresh: true
     agent_llm: gemma4-26b-openai
     agent_llm_args:
-      openai_base_url: "http://35.224.147.230:8000"   # vLLM server root
+      openai_base_url: "http://34.136.201.142:8000"   # vLLM server root
       openai_api_key: "EMPTY"                         # vLLM default
       openai_model: "google/gemma-4-26B-A4B-it"
       temperature: 0
@@ -49,7 +49,7 @@ runs:
     fresh: true
     agent_llm: gemma4-26b-openai
     agent_llm_args:
-      openai_base_url: "http://35.224.147.230:8000"   # vLLM server root
+      openai_base_url: "http://34.136.201.142:8000"   # vLLM server root
       openai_api_key: "EMPTY"                         # vLLM default
       openai_model: "google/gemma-4-26B-A4B-it"
       temperature: 0
@@ -72,7 +72,7 @@ runs:
     fresh: true
     seed: -1
     agent_llm_args:
-      openai_base_url: "http://136.114.208.124:8000"   # vLLM server root
+      openai_base_url: "http://34.46.70.60:8000"   # vLLM server root
       openai_api_key: "EMPTY"                         # vLLM default
       openai_model: "google/gemma-4-26B-A4B-it"
       temperature: 0
@@ -103,7 +103,7 @@ runs:
     fresh: true
     agent_llm: gemma4-26b-openai
     agent_llm_args:
-      openai_base_url: "http://130.211.210.221:8000"   # vLLM server root
+      openai_base_url: "http://35.238.244.179:8000"   # vLLM server root
       openai_api_key: "EMPTY"                         # vLLM default
       openai_model: "google/gemma-4-26B-A4B-it"
       temperature: 0

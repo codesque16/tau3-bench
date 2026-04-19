@@ -264,6 +264,7 @@ def _build_run_config(cfg: dict[str, Any]) -> TextRunConfig | VoiceRunConfig:
         fresh=bool(cfg.get("fresh", False)),
         retail_policy_path=cfg.get("retail_policy_path"),
         airline_policy_path=cfg.get("airline_policy_path"),
+        run_name=cfg.get("run_name"),
     )
 
     mode = cfg.get("mode")
@@ -285,6 +286,13 @@ def _build_run_config(cfg: dict[str, Any]) -> TextRunConfig | VoiceRunConfig:
     agent_llm_args = dict(cfg.get("agent_llm_args", cfg.get("llm_args_agent", {})) or {})
     if isinstance(cfg.get("agent_pricing"), dict):
         agent_llm_args["pricing"] = cfg["agent_pricing"]
+
+    # Top-level agent LLM knobs some run configs declare outside agent_llm_args.
+    # Fold them in without clobbering values the user set explicitly under
+    # agent_llm_args (which wins).
+    for _passthrough_key in ("continue_on_length", "max_length_continuations"):
+        if _passthrough_key in cfg and _passthrough_key not in agent_llm_args:
+            agent_llm_args[_passthrough_key] = cfg[_passthrough_key]
 
     return TextRunConfig(
         **shared_kwargs,

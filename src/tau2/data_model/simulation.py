@@ -377,6 +377,13 @@ class BaseRunConfig(BaseModel):
             default=None,
         ),
     ]
+    run_name: Annotated[
+        Optional[str],
+        Field(
+            description="Human-readable run name for Logfire traces and logging. Overrides the auto-generated run_id when set.",
+            default=None,
+        ),
+    ]
     fresh: Annotated[
         bool,
         Field(

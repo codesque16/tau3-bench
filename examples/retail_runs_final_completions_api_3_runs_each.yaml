@@ -2,260 +2,20 @@ run_concurrency: 6
 
 runs:
   # Base template for openai_agent solo runs.
-  retail_conv_openai_agent_original_policy_completions:
-    run_name: "[Original Policy][GEMMA4-26B-A4B-IT][GEMINI-3.1-PRO-PREVIEW][Conversation][Retail]"
-    domain: retail
-    num_trials: 4
-    # task_ids: ["20"]
-    trial_concurrency: 4
-    max_concurrency: 180
-    verbose_logs: true
-    seed: -1
-    continue_on_length: false
-    max_length_continuations: 1   # optional; omit for default 8
-    agent: openai_completions_agent
-    save_to: retail_conv_openai_agent_original_policy_completions
-    retail_policy_path: data/tau2/domains/retail/policy.md
-    fresh: true
-    agent_llm: gemma4-26b-openai
-    agent_llm_args:
-      openai_base_url: "http://34.136.201.142:8000"   # vLLM server root
-      openai_api_key: "EMPTY"                         # vLLM default
-      openai_model: "google/gemma-4-26B-A4B-it"
-      temperature: 0
-      top_p: 0.95
-      top_k: 64
-      max_tokens: 4096
-      skip_special_tokens: false
-      jinja_template_path: "../scripts/gcloud_scripts/gemma4_26b_injected_add_injection.jinja"
-      chat_template_kwargs:
-        enable_thinking: true
-        add_generation_prompt: true
-    user: vertex_user_simulator
-    user_llm: gemini-3.1-pro-preview
-    user_llm_args:
-      temperature: 0.3
-
-  retail_conv_openai_agent_original_policy_completions_test:
-    run_name: "[Original Policy][GEMMA4-26B-A4B-IT][GEMINI-3.1-PRO-PREVIEW][Conversation][Retail]"
-    domain: retail
-    num_trials: 4
-    task_ids: ["20"]
-    trial_concurrency: 4
-    max_concurrency: 180
-    verbose_logs: true
-    seed: -1
-    continue_on_length: false
-    max_length_continuations: 1   # optional; omit for default 8
-    agent: openai_completions_agent
-    save_to: retail_conv_openai_agent_original_policy_completions
-    retail_policy_path: data/tau2/domains/retail/policy.md
-    fresh: true
-    agent_llm: gemma4-26b-openai
-    agent_llm_args:
-      openai_base_url: "http://34.136.201.142:8000"   # vLLM server root
-      openai_api_key: "EMPTY"                         # vLLM default
-      openai_model: "google/gemma-4-26B-A4B-it"
-      temperature: 0
-      top_p: 0.95
-      top_k: 64
-      max_tokens: 512
-      skip_special_tokens: false
-      jinja_template_path: "../scripts/gcloud_scripts/gemma4_26b_injected_add_injection.jinja"
-      chat_template_kwargs:
-        enable_thinking: true
-        add_generation_prompt: true
-    user: vertex_user_simulator
-    user_llm: gemini-3.1-pro-preview
-    user_llm_args:
-      temperature: 0.3
-
-  retail_conv_openai_agent_mermaid_thinking_instructions_completions:
-    domain: retail
-    num_trials: 4
-    task_ids: ["0","1","2"]
-    trial_concurrency: 4
-    max_concurrency: 30
-    verbose_logs: true
-    seed: -1
-    agent: openai_completions_agent
-    save_to: retail_conv_openai_agent_mermaid_thinking_instructions_completions
-    retail_policy_path: data/tau2/domains/retail/policy_mermaid.md
-    fresh: true
-    agent_llm: gemma4-26b-openai
-    agent_llm_args:
-      openai_base_url: "http://34.136.201.142:8000"   # vLLM server root
-      openai_api_key: "EMPTY"                         # vLLM default
-      openai_model: "google/gemma-4-26B-A4B-it"
-      temperature: 0
-      max_tokens: 2048
-      skip_special_tokens: true
-      jinja_template_path: "../scripts/gcloud_scripts/gemma4_26b_injected_add_injection.jinja"
-      chat_template_kwargs:
-        enable_thinking: true
-        add_generation_prompt: true
-    user: vertex_user_simulator
-    user_llm: gemini-3.1-flash-lite-preview
-    user_llm_args:
-      temperature: 0.3
-
-  retail_conv_openai_agent_mermaid_thinking_instructions_injection_completions:
-    base_run: retail_conv_openai_agent_mermaid_thinking_instructions_completions
-    save_to: retail_conv_openai_agent_mermaid_thinking_instructions_injection_completions
-    retail_policy_path: data/tau2/domains/retail/policy_mermaid.md
-    task_ids: ["0","1","2","3","4","5","6","7","8","9","10"]
-    fresh: true
-    seed: -1
-    agent_llm_args:
-      openai_base_url: "http://34.46.70.60:8000"   # vLLM server root
-      openai_api_key: "EMPTY"                         # vLLM default
-      openai_model: "google/gemma-4-26B-A4B-it"
-      temperature: 0
-      max_tokens: 2048
-      skip_special_tokens: true
-      chat_template_kwargs:
-        enable_thinking: true
-        add_generation_prompt: true
-        injection_prefix: "<|channel>thought\nLet me first start by the reasoning on the SOP graph. I will focus on the relevant nodes, fetch relevant policies and tool_hints as per the instructions and structure.\nSOP_POLICIES:\n\tGLOBAL:\n\t\trelevant_policies:"
-    user: vertex_user_simulator
-    user_llm: gemini-3.1-flash-lite-preview
-    user_llm_args:
-      temperature: 0.3
-
-  retail_conv_openai_agent_mermaid_no_thinking_instructions_completions:
-    run_name: "[Mermaid][GEMMA4-26B-A4B-IT][GEMINI-3.1-PRO-PREVIEW][Conversation][Retail]"
-    domain: retail
-    num_trials: 4
-    # task_ids: ["0","1","2"]
-    trial_concurrency: 4
-    max_concurrency: 180
-    verbose_logs: true
-    seed: -1
-    continue_on_length: false
-    max_length_continuations: 1   # optional; omit for default 8
-    agent: openai_completions_agent
-    save_to: retail_conv_openai_agent_mermaid_no_thinking_instructions_completions
-    retail_policy_path: data/tau2/domains/retail/policy_opus.md
-    # retail_policy_path: data/tau2/domains/retail/policy_mermaid_conv_no_thinking_instruction.md
-    fresh: true
-    agent_llm: gemma4-26b-openai
-    agent_llm_args:
-      openai_base_url: "http://104.197.200.249:8000"   # vLLM server root
-      openai_api_key: "EMPTY"                         # vLLM default
-      openai_model: "google/gemma-4-26B-A4B-it"
-      temperature: 0
-      top_p: 0.95
-      top_k: 64
-      max_tokens: 4096
-      skip_special_tokens: false
-      jinja_template_path: "../scripts/gcloud_scripts/gemma4_26b_injected_add_injection.jinja"
-      chat_template_kwargs:
-        enable_thinking: true
-        add_generation_prompt: true
-    user: vertex_user_simulator
-    user_llm: gemini-3.1-pro-preview
-    user_llm_args:
-      temperature: 0.3
-
-  retail_conv_openai_agent_mermaid_no_thinking_instructions_injection_completions:
-    run_name: "[Mermaid + Injection][GEMMA4-26B-A4B-IT][GEMINI-3.1-PRO-PREVIEW][Conversation][Retail]"
-    base_run: retail_conv_openai_agent_mermaid_no_thinking_instructions_completions
-    save_to: retail_conv_openai_agent_mermaid_no_thinking_instructions_injection_completions
-    retail_policy_path: data/tau2/domains/retail/policy_opus.md
-    fresh: true
-    seed: -1
-    continue_on_length: true
-    max_length_continuations: 1   # optional; omit for default 8
-    # task_ids: ["20"]
-    agent_llm_args:
-      openai_base_url: "http://34.134.150.230:8000"   # vLLM server root
-      openai_api_key: "EMPTY"                         # vLLM default
-      openai_model: "google/gemma-4-26B-A4B-it"
-      temperature: 0
-      top_p: 0.95
-      top_k: 64
-      max_tokens: 4096
-      skip_special_tokens: false
-      chat_template_kwargs:
-        enable_thinking: true
-        add_generation_prompt: true
-        injection_prefix: "<|channel>thought\nLet me first start by the reasoning on the SOP graph. I will focus on the relevant nodes, fetch relevant policies and tool_hints as per the instructions and structure.\nSOP_POLICIES:\n\tGLOBAL:\n\t\trelevant_policies:"
-    user: vertex_user_simulator
-    user_llm: gemini-3.1-pro-preview
-    user_llm_args:
-      temperature: 0.3
-
-  retail_conv_openai_agent_mermaid_no_thinking_instructions_injection_completions_failed:
-    run_name: "[Mermaid + Injection][GEMMA4-26B-A4B-IT][GEMINI-3.1-PRO-PREVIEW][Conversation][Retail]"
-    base_run: retail_conv_openai_agent_mermaid_no_thinking_instructions_completions
-    save_to: retail_conv_openai_agent_mermaid_no_thinking_instructions_injection_completions_failed
-    retail_policy_path: data/tau2/domains/retail/policy_opus_injection_failed.md
-    fresh: true
-    seed: -1
-    continue_on_length: false
-    max_length_continuations: 1   # optional; omit for default 8
-    # task_ids: ["0","1","2"]
-    agent_llm_args:
-      openai_base_url: "http://34.134.150.230:8000"   # vLLM server root
-      openai_api_key: "EMPTY"                         # vLLM default
-      openai_model: "google/gemma-4-26B-A4B-it"
-      temperature: 0
-      top_p: 0.95
-      top_k: 64
-      max_tokens: 4096
-      skip_special_tokens: false
-      chat_template_kwargs:
-        enable_thinking: true
-        add_generation_prompt: true
-        injection_prefix: "<|channel>thought\nLet me first start by the reasoning on the SOP graph. I will focus on the relevant nodes, fetch relevant policies and tool_hints as per the instructions and structure.\nSOP_POLICIES:\n\tGLOBAL:\n\t\trelevant_policies:"
-    user: vertex_user_simulator
-    user_llm: gemini-3.1-pro-preview
-    user_llm_args:
-      temperature: 0.3
-
-  retail_conv_openai_agent_mermaid_no_thinking_instructions_injection_completions_full:
-    run_name: "[Mermaid + Injection][GEMMA4-26B-A4B-IT][GEMINI-3.1-PRO-PREVIEW][Conversation][Retail]"
-    base_run: retail_conv_openai_agent_mermaid_no_thinking_instructions_completions
-    save_to: retail_conv_openai_agent_mermaid_no_thinking_instructions_injection_completions_full
-    retail_policy_path: data/tau2/domains/retail/policy_opus_injection_trainval.md
-    fresh: true
-    seed: -1
-    continue_on_length: false
-    max_length_continuations: 1   # optional; omit for default 8
-    # task_ids: ["0","1","2"]
-    agent_llm_args:
-      openai_base_url: "http://34.136.201.142:8000"   # vLLM server root
-      openai_api_key: "EMPTY"                         # vLLM default
-      openai_model: "google/gemma-4-26B-A4B-it"
-      temperature: 0
-      top_p: 0.95
-      top_k: 64
-      max_tokens: 4096
-      skip_special_tokens: false
-      chat_template_kwargs:
-        enable_thinking: true
-        add_generation_prompt: true
-        injection_prefix: "<|channel>thought\nLet me first start by the reasoning on the SOP graph. I will focus on the relevant nodes, fetch relevant policies and tool_hints as per the instructions and structure.\nSOP_POLICIES:\n\tGLOBAL:\n\t\trelevant_policies:"
-    user: vertex_user_simulator
-    user_llm: gemini-3.1-pro-preview
-    user_llm_args:
-      temperature: 0.3
-
-  retail_conv_openai_agent_mermaid_no_thinking_instructions_injection_completions_opus_base:
-    run_name: "[Mermaid][GEMMA4-26B-A4B-IT][GEMINI-3.1-PRO-PREVIEW][Conversation][Retail]"
+  retail_conv_openai_agent_original_policy_completions_R1:
+    run_name: "[Opus Base Policy][R1][GEMMA4-26B-A4B-IT][GEMINI-3.1-PRO-PREVIEW][Conversation][Retail]"
     domain: retail
     num_trials: 5
-    # task_ids: ["4","19","32","37","38","63","64","74","84","91","98","105","107","108"]
-    trial_concurrency: 4
+    # task_ids: ["20"]
+    trial_concurrency: 5
     max_concurrency: 180
     verbose_logs: true
     seed: -1
     continue_on_length: true
     max_length_continuations: 1   # optional; omit for default 8
     agent: openai_completions_agent
-    save_to: retail_conv_openai_agent_mermaid_no_thinking_instructions_injection_completions_opus_base
+    save_to: retail_conv_openai_agent_opus_base_policy_completions_R1
     retail_policy_path: data/tau2/domains/retail/policy_opus.md
-    # retail_policy_path: data/tau2/domains/retail/policy_mermaid_conv_no_thinking_instruction.md
     fresh: true
     agent_llm: gemma4-26b-openai
     agent_llm_args:
@@ -271,31 +31,98 @@ runs:
       chat_template_kwargs:
         enable_thinking: true
         add_generation_prompt: true
-        injection_prefix: "<|channel>thought\nLet me first start by the reasoning on the SOP graph. I will focus on the relevant nodes, fetch relevant policies and tool_hints as per the instructions and structure.\nSOP_POLICIES:\n\tGLOBAL:\n\t\trelevant_policies:"
     user: vertex_user_simulator
     user_llm: gemini-3.1-pro-preview
     user_llm_args:
       temperature: 0.3
 
-  retail_conv_openai_agent_mermaid_no_thinking_instructions_completions_opus_gepa_48:
-    run_name: "[Mermaid][GEMMA4-26B-A4B-IT][GEMINI-3.1-PRO-PREVIEW][Conversation][Retail]"
+  retail_conv_openai_agent_original_policy_completions_R2:
+    run_name: "[Opus Base Policy][R2][GEMMA4-26B-A4B-IT][GEMINI-3.1-PRO-PREVIEW][Conversation][Retail]"
     domain: retail
     num_trials: 5
-    # task_ids: ["4","19","32","37","38","63","64","74","84","91","98","105","107","108"]
-    trial_concurrency: 4
+    # task_ids: ["20"]
+    trial_concurrency: 5
     max_concurrency: 180
     verbose_logs: true
     seed: -1
     continue_on_length: true
     max_length_continuations: 1   # optional; omit for default 8
     agent: openai_completions_agent
-    save_to: retail_conv_openai_agent_mermaid_no_thinking_instructions_completions_opus_gepa_48
+    save_to: retail_conv_openai_agent_opus_base_policy_completions_R2
+    retail_policy_path: data/tau2/domains/retail/policy_opus.md
+    fresh: true
+    agent_llm: gemma4-26b-openai
+    agent_llm_args:
+      openai_base_url: "http://35.194.11.203:8000"   # vLLM server root
+      openai_api_key: "EMPTY"                         # vLLM default
+      openai_model: "google/gemma-4-26B-A4B-it"
+      temperature: 0
+      top_p: 0.95
+      top_k: 64
+      max_tokens: 4096
+      skip_special_tokens: false
+      jinja_template_path: "../scripts/gcloud_scripts/gemma4_26b_injected_add_injection.jinja"
+      chat_template_kwargs:
+        enable_thinking: true
+        add_generation_prompt: true
+    user: vertex_user_simulator
+    user_llm: gemini-3.1-pro-preview
+    user_llm_args:
+      temperature: 0.3
+
+  retail_conv_openai_agent_original_policy_completions_R3:
+    run_name: "[Opus Base Policy][R3][GEMMA4-26B-A4B-IT][GEMINI-3.1-PRO-PREVIEW][Conversation][Retail]"
+    domain: retail
+    num_trials: 5
+    # task_ids: ["20"]
+    trial_concurrency: 5
+    max_concurrency: 180
+    verbose_logs: true
+    seed: -1
+    continue_on_length: true
+    max_length_continuations: 1   # optional; omit for default 8
+    agent: openai_completions_agent
+    save_to: retail_conv_openai_agent_opus_base_policy_completions_R3
+    retail_policy_path: data/tau2/domains/retail/policy_opus.md
+    fresh: true
+    agent_llm: gemma4-26b-openai
+    agent_llm_args:
+      openai_base_url: "http://136.119.193.225:8000"   # vLLM server root
+      openai_api_key: "EMPTY"                         # vLLM default
+      openai_model: "google/gemma-4-26B-A4B-it"
+      temperature: 0
+      top_p: 0.95
+      top_k: 64
+      max_tokens: 4096
+      skip_special_tokens: false
+      jinja_template_path: "../scripts/gcloud_scripts/gemma4_26b_injected_add_injection.jinja"
+      chat_template_kwargs:
+        enable_thinking: true
+        add_generation_prompt: true
+    user: vertex_user_simulator
+    user_llm: gemini-3.1-pro-preview
+    user_llm_args:
+      temperature: 0.3
+
+  retail_conv_openai_agent_mermaid_no_thinking_instructions_completions_R1:
+    run_name: "[Mermaid][R1][GEMMA4-26B-A4B-IT][GEMINI-3.1-PRO-PREVIEW][Conversation][Retail]"
+    domain: retail
+    num_trials: 5
+    # task_ids: ["4","19","32","37","38","63","64","74","84","91","98","105","107","108"]
+    trial_concurrency: 5
+    max_concurrency: 180
+    verbose_logs: true
+    seed: -1
+    continue_on_length: true
+    max_length_continuations: 1   # optional; omit for default 8
+    agent: openai_completions_agent
+    save_to: retail_conv_openai_agent_mermaid_no_thinking_instructions_completions_R1
     retail_policy_path: data/tau2/domains/retail/policy_opus_gepa_pass_4_48ex.md
     # retail_policy_path: data/tau2/domains/retail/policy_mermaid_conv_no_thinking_instruction.md
     fresh: true
     agent_llm: gemma4-26b-openai
     agent_llm_args:
-      openai_base_url: "http://35.194.11.203:8000"   # vLLM server root
+      openai_base_url: "http://34.123.98.60:8000"   # vLLM server root
       openai_api_key: "EMPTY"                         # vLLM default
       openai_model: "google/gemma-4-26B-A4B-it"
       temperature: 0
@@ -312,3 +139,184 @@ runs:
     user_llm: gemini-3.1-pro-preview
     user_llm_args:
       temperature: 0.3
+
+  retail_conv_openai_agent_mermaid_no_thinking_instructions_completions_R2:
+    run_name: "[Mermaid][R2][GEMMA4-26B-A4B-IT][GEMINI-3.1-PRO-PREVIEW][Conversation][Retail]"
+    domain: retail
+    num_trials: 5
+    # task_ids: ["4","19","32","37","38","63","64","74","84","91","98","105","107","108"]
+    trial_concurrency: 5
+    max_concurrency: 180
+    verbose_logs: true
+    seed: -1
+    continue_on_length: true
+    max_length_continuations: 1   # optional; omit for default 8
+    agent: openai_completions_agent
+    save_to: retail_conv_openai_agent_mermaid_no_thinking_instructions_completions_R2
+    retail_policy_path: data/tau2/domains/retail/policy_opus_gepa_pass_4_48ex.md
+    # retail_policy_path: data/tau2/domains/retail/policy_mermaid_conv_no_thinking_instruction.md
+    fresh: true
+    agent_llm: gemma4-26b-openai
+    agent_llm_args:
+      openai_base_url: "http://104.197.200.249:8000"   # vLLM server root
+      openai_api_key: "EMPTY"                         # vLLM default
+      openai_model: "google/gemma-4-26B-A4B-it"
+      temperature: 0
+      top_p: 0.95
+      top_k: 64
+      max_tokens: 4096
+      skip_special_tokens: false
+      jinja_template_path: "../scripts/gcloud_scripts/gemma4_26b_injected_add_injection.jinja"
+      chat_template_kwargs:
+        enable_thinking: true
+        add_generation_prompt: true
+        # injection_prefix: "<|channel>thought\nLet me first start by the reasoning on the SOP graph. I will focus on the relevant nodes, fetch relevant policies and tool_hints as per the instructions and structure.\nSOP_POLICIES:\n\tGLOBAL:\n\t\trelevant_policies:"
+    user: vertex_user_simulator
+    user_llm: gemini-3.1-pro-preview
+    user_llm_args:
+      temperature: 0.3
+
+  retail_conv_openai_agent_mermaid_no_thinking_instructions_completions_R3:
+    run_name: "[Mermaid][R3][GEMMA4-26B-A4B-IT][GEMINI-3.1-PRO-PREVIEW][Conversation][Retail]"
+    domain: retail
+    num_trials: 5
+    # task_ids: ["4","19","32","37","38","63","64","74","84","91","98","105","107","108"]
+    trial_concurrency: 5
+    max_concurrency: 180
+    verbose_logs: true
+    seed: -1
+    continue_on_length: true
+    max_length_continuations: 1   # optional; omit for default 8
+    agent: openai_completions_agent
+    save_to: retail_conv_openai_agent_mermaid_no_thinking_instructions_completions_R3
+    retail_policy_path: data/tau2/domains/retail/policy_opus_gepa_pass_4_48ex.md
+    # retail_policy_path: data/tau2/domains/retail/policy_mermaid_conv_no_thinking_instruction.md
+    fresh: true
+    agent_llm: gemma4-26b-openai
+    agent_llm_args:
+      openai_base_url: "http://136.115.152.20:8000"   # vLLM server root
+      openai_api_key: "EMPTY"                         # vLLM default
+      openai_model: "google/gemma-4-26B-A4B-it"
+      temperature: 0
+      top_p: 0.95
+      top_k: 64
+      max_tokens: 4096
+      skip_special_tokens: false
+      jinja_template_path: "../scripts/gcloud_scripts/gemma4_26b_injected_add_injection.jinja"
+      chat_template_kwargs:
+        enable_thinking: true
+        add_generation_prompt: true
+        # injection_prefix: "<|channel>thought\nLet me first start by the reasoning on the SOP graph. I will focus on the relevant nodes, fetch relevant policies and tool_hints as per the instructions and structure.\nSOP_POLICIES:\n\tGLOBAL:\n\t\trelevant_policies:"
+    user: vertex_user_simulator
+    user_llm: gemini-3.1-pro-preview
+    user_llm_args:
+      temperature: 0.3
+
+  retail_conv_openai_agent_mermaid_no_thinking_instructions_injection_completions_R1:
+    run_name: "[Mermaid+Injection][R1][GEMMA4-26B-A4B-IT][GEMINI-3.1-PRO-PREVIEW][Conversation][Retail]"
+    domain: retail
+    num_trials: 5
+    # task_ids: ["4","19","32","37","38","63","64","74","84","91","98","105","107","108"]
+    trial_concurrency: 5
+    max_concurrency: 180
+    verbose_logs: true
+    seed: -1
+    continue_on_length: true
+    max_length_continuations: 1   # optional; omit for default 8
+    agent: openai_completions_agent
+    save_to: retail_conv_openai_agent_mermaid_no_thinking_instructions_injection_completions_R1
+    retail_policy_path: data/tau2/domains/retail/policy_opus_gepa_pass_4_48ex.md
+    # retail_policy_path: data/tau2/domains/retail/policy_mermaid_conv_no_thinking_instruction.md
+    fresh: true
+    agent_llm: gemma4-26b-openai
+    agent_llm_args:
+      openai_base_url: "http://34.59.28.240:8000"   # vLLM server root
+      openai_api_key: "EMPTY"                         # vLLM default
+      openai_model: "google/gemma-4-26B-A4B-it"
+      temperature: 0
+      top_p: 0.95
+      top_k: 64
+      max_tokens: 4096
+      skip_special_tokens: false
+      jinja_template_path: "../scripts/gcloud_scripts/gemma4_26b_injected_add_injection.jinja"
+      chat_template_kwargs:
+        enable_thinking: true
+        add_generation_prompt: true
+        injection_prefix: "<|channel>thought\nLet me first start by the reasoning on the SOP graph. I will focus on the relevant nodes, fetch relevant policies and tool_hints as per the instructions and structure.\nSOP_POLICIES:\n\tGLOBAL:\n\t\trelevant_policies:"
+    user: vertex_user_simulator
+    user_llm: gemini-3.1-pro-preview
+    user_llm_args:
+      temperature: 0.3
+
+  retail_conv_openai_agent_mermaid_no_thinking_instructions_injection_completions_R2:
+    run_name: "[Mermaid+Injection][R2][GEMMA4-26B-A4B-IT][GEMINI-3.1-PRO-PREVIEW][Conversation][Retail]"
+    domain: retail
+    num_trials: 5
+    # task_ids: ["4","19","32","37","38","63","64","74","84","91","98","105","107","108"]
+    trial_concurrency: 5
+    max_concurrency: 180
+    verbose_logs: true
+    seed: -1
+    continue_on_length: true
+    max_length_continuations: 1   # optional; omit for default 8
+    agent: openai_completions_agent
+    save_to: retail_conv_openai_agent_mermaid_no_thinking_instructions_injection_completions_R2
+    retail_policy_path: data/tau2/domains/retail/policy_opus_gepa_pass_4_48ex.md
+    # retail_policy_path: data/tau2/domains/retail/policy_mermaid_conv_no_thinking_instruction.md
+    fresh: true
+    agent_llm: gemma4-26b-openai
+    agent_llm_args:
+      openai_base_url: "http://34.57.44.41:8000"   # vLLM server root
+      openai_api_key: "EMPTY"                         # vLLM default
+      openai_model: "google/gemma-4-26B-A4B-it"
+      temperature: 0
+      top_p: 0.95
+      top_k: 64
+      max_tokens: 4096
+      skip_special_tokens: false
+      jinja_template_path: "../scripts/gcloud_scripts/gemma4_26b_injected_add_injection.jinja"
+      chat_template_kwargs:
+        enable_thinking: true
+        add_generation_prompt: true
+        injection_prefix: "<|channel>thought\nLet me first start by the reasoning on the SOP graph. I will focus on the relevant nodes, fetch relevant policies and tool_hints as per the instructions and structure.\nSOP_POLICIES:\n\tGLOBAL:\n\t\trelevant_policies:"
+    user: vertex_user_simulator
+    user_llm: gemini-3.1-pro-preview
+    user_llm_args:
+      temperature: 0.3
+
+  retail_conv_openai_agent_mermaid_no_thinking_instructions_injection_completions_R3:
+    run_name: "[Mermaid+Injection][R3][GEMMA4-26B-A4B-IT][GEMINI-3.1-PRO-PREVIEW][Conversation][Retail]"
+    domain: retail
+    num_trials: 5
+    # task_ids: ["4","19","32","37","38","63","64","74","84","91","98","105","107","108"]
+    trial_concurrency: 5
+    max_concurrency: 180
+    verbose_logs: true
+    seed: -1
+    continue_on_length: true
+    max_length_continuations: 1   # optional; omit for default 8
+    agent: openai_completions_agent
+    save_to: retail_conv_openai_agent_mermaid_no_thinking_instructions_injection_completions_R3
+    retail_policy_path: data/tau2/domains/retail/policy_opus_gepa_pass_4_48ex.md
+    # retail_policy_path: data/tau2/domains/retail/policy_mermaid_conv_no_thinking_instruction.md
+    fresh: true
+    agent_llm: gemma4-26b-openai
+    agent_llm_args:
+      openai_base_url: "http://34.174.60.65:8000"   # vLLM server root
+      openai_api_key: "EMPTY"                         # vLLM default
+      openai_model: "google/gemma-4-26B-A4B-it"
+      temperature: 0
+      top_p: 0.95
+      top_k: 64
+      max_tokens: 4096
+      skip_special_tokens: false
+      jinja_template_path: "../scripts/gcloud_scripts/gemma4_26b_injected_add_injection.jinja"
+      chat_template_kwargs:
+        enable_thinking: true
+        add_generation_prompt: true
+        injection_prefix: "<|channel>thought\nLet me first start by the reasoning on the SOP graph. I will focus on the relevant nodes, fetch relevant policies and tool_hints as per the instructions and structure.\nSOP_POLICIES:\n\tGLOBAL:\n\t\trelevant_policies:"
+    user: vertex_user_simulator
+    user_llm: gemini-3.1-pro-preview
+    user_llm_args:
+      temperature: 0.3
+
