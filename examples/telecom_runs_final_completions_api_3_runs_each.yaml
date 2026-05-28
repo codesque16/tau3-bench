@@ -1,0 +1,63 @@
+run_concurrency: 6
+
+# Shared defaults inherited by all runs below.
+# Override anything per-replica with --set on the CLI, e.g.:
+#
+#   uv run tau2config --config examples/telecom_runs_final_completions_api_3_runs_each.yaml \
+#     --run-ids injection \
+#     --set agent_llm_args.openai_base_url=http://35.224.45.185:8000 \
+#     --set run_name="[Injection][R2][GEMMA4-26B-A4B-IT][GEMINI-3.1-FLASH-LITE][Conversation][Telecom]" \
+#     --set save_to=telecom_conv_openai_agent_injection_completions_R2
+#
+# Note: telecom policy files are baked into the domain environment (no policy_path override).
+# The three run variants differ by domain name (telecom vs telecom-workflow) and injection.
+#
+domain: telecom
+num_trials: 4
+trial_concurrency: 4
+max_concurrency: 160
+verbose_logs: true
+seed: -1
+continue_on_length: false
+max_length_continuations: 1
+agent: openai_completions_agent
+fresh: true
+agent_llm: gemma4-26b-openai
+agent_llm_args:
+  openai_base_url: "http://34.60.168.33:8000"   # default server; override via --set
+  openai_api_key: "EMPTY"
+  openai_model: "google/gemma-4-26B-A4B-it"
+  temperature: 0
+  top_p: 0.95
+  top_k: 64
+  max_tokens: 4096
+  skip_special_tokens: false
+  jinja_template_path: "../scripts/gcloud_scripts/gemma4_26b_injected_add_injection.jinja"
+  chat_template_kwargs:
+    enable_thinking: true
+    add_generation_prompt: true
+user: vertex_user_simulator
+user_llm: gemini-3.1-flash-lite-preview
+user_llm_args:
+  temperature: 0.3
+
+runs:
+  original_policy:
+    # domain: telecom uses the manual (main_policy.md + tech_support_manual.md) policy
+    run_name: "[Original Policy][R1][GEMMA4-26B-A4B-IT][GEMINI-3.1-FLASH-LITE][Conversation][Telecom]"
+    save_to: telecom_conv_openai_agent_original_policy_completions_R1
+
+  workflow_policy:
+    # domain: telecom-workflow uses the workflow (main_policy.md + tech_support_workflow.md) policy
+    domain: telecom-workflow
+    run_name: "[Workflow Policy][R1][GEMMA4-26B-A4B-IT][GEMINI-3.1-FLASH-LITE][Conversation][Telecom]"
+    save_to: telecom_conv_openai_agent_workflow_policy_completions_R1
+
+  injection:
+    # Manual policy with thinking injection prefix
+    run_name: "[Injection][R1][GEMMA4-26B-A4B-IT][GEMINI-3.1-FLASH-LITE][Conversation][Telecom]"
+    save_to: telecom_conv_openai_agent_injection_completions_R1
+    agent_llm_args:
+      openai_base_url: "http://136.114.203.237:8000"  # default R1 server; override via --set
+      chat_template_kwargs:
+        injection_prefix: "<|channel>thought\nLet me first start by the reasoning on the SOP graph. I will focus on the relevant nodes, fetch relevant policies and tool_hints as per the instructions and structure.\nSOP_POLICIES:\n\tGLOBAL:\n\t\trelevant_policies:"

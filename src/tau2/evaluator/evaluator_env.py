@@ -82,11 +82,16 @@ class EnvironmentEvaluator(EvaluatorBase[Message]):
             solo_mode=solo_mode, **env_kwargs
         )
 
-        predicted_environment.set_state(
+        unknown_tool_calls = predicted_environment.set_state(
             initialization_data=initialization_data,
             initialization_actions=initialization_actions,
             message_history=list(full_trajectory),
         )
+        if unknown_tool_calls:
+            logger.warning(
+                "Replay skipped unknown tool calls: {}",
+                unknown_tool_calls,
+            )
 
         # Setting up gold environment
         gold_environment = environment_constructor(**env_kwargs)
@@ -156,6 +161,7 @@ class EnvironmentEvaluator(EvaluatorBase[Message]):
             env_assertions=env_assertion_checks,
             reward_basis=task.evaluation_criteria.reward_basis,
             reward_breakdown=reward_breakdown,
+            unknown_tool_calls=unknown_tool_calls or None,
         )
 
 

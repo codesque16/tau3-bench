@@ -264,6 +264,7 @@ def _build_run_config(cfg: dict[str, Any]) -> TextRunConfig | VoiceRunConfig:
         fresh=bool(cfg.get("fresh", False)),
         retail_policy_path=cfg.get("retail_policy_path"),
         airline_policy_path=cfg.get("airline_policy_path"),
+        telecom_policy_path=cfg.get("telecom_policy_path"),
         run_name=cfg.get("run_name"),
     )
 
@@ -301,6 +302,7 @@ def _build_run_config(cfg: dict[str, Any]) -> TextRunConfig | VoiceRunConfig:
         llm_args_agent=agent_llm_args,
         user=cfg.get("user", "user_simulator"),
         max_steps=cfg.get("max_steps", DEFAULT_MAX_STEPS),
+        max_user_turns=cfg.get("max_user_turns"),
         enforce_communication_protocol=bool(
             cfg.get("enforce_communication_protocol", False)
         ),
@@ -320,6 +322,46 @@ def _apply_fresh_save_to(cfg: dict[str, Any]) -> None:
     cfg["save_to"] = f"{base_name}_{stamp}"
 
 
+def _cast_value(s: str) -> Any:
+    """Auto-cast a CLI string to int, float, bool, None, or str."""
+    low = s.lower()
+    if low in ("true", "yes"):
+        return True
+    if low in ("false", "no"):
+        return False
+    if low in ("null", "none", "~"):
+        return None
+    try:
+        return int(s)
+    except ValueError:
+        pass
+    try:
+        return float(s)
+    except ValueError:
+        pass
+    return s
+
+
+def _parse_set_overrides(overrides: list[str]) -> dict[str, Any]:
+    """Convert ['key.sub.leaf=value', ...] into a nested dict using dot notation."""
+    result: dict[str, Any] = {}
+    for item in overrides:
+        if "=" not in item:
+            raise ValueError(
+                f"--set override must be in KEY=VALUE format (dot-notation for nested keys), got: {item!r}"
+            )
+        key, _, raw_val = item.partition("=")
+        keys = [k.strip() for k in key.strip().split(".")]
+        if not all(keys):
+            raise ValueError(f"Invalid key path in --set override: {key!r}")
+        val = _cast_value(raw_val)
+        node = result
+        for k in keys[:-1]:
+            node = node.setdefault(k, {})
+        node[keys[-1]] = val
+    return result
+
+
 def _effective_run_concurrency(cfg: dict[str, Any], cli_override: int | None) -> int:
     """Root-level YAML ``run_concurrency`` or CLI ``--run-concurrency``; minimum 1."""
     if cli_override is not None:
@@ -337,6 +379,8 @@ def _prepare_merged_cfg_for_run(
     all_runs: dict[str, dict[str, Any]],
     root_defaults: dict[str, Any],
     cfg_path: Path,
+    *,
+    cli_overrides: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     resolved_run = _resolve_run_with_base_inheritance(
         run_id, run_cfg, all_runs, frozenset()
@@ -351,6 +395,22 @@ def _prepare_merged_cfg_for_run(
         merged_cfg["config_name"] = run_id
     else:
         merged_cfg.setdefault("config_name", cfg_path.stem)
+    # Apply CLI overrides before timestamping so --set save_to=foo still gets
+    # the fresh timestamp appended (i.e. foo_05_12_14_30_45).
+    if cli_overrides:
+        merged_cfg = _merge_dicts(merged_cfg, cli_overrides)
+    # Auto-generate run_name from run_id + config fields if not explicitly set.
+    if not merged_cfg.get("run_name"):
+        agent_llm = merged_cfg.get("agent_llm") or merged_cfg.get("llm_agent") or ""
+        user_llm = merged_cfg.get("user_llm") or merged_cfg.get("llm_user") or ""
+        domain = str(merged_cfg.get("domain") or "").title()
+        _llm_args = merged_cfg.get("agent_llm_args") or {}
+        _ctk = _llm_args.get("chat_template_kwargs") or {}
+        _thinking = _llm_args.get("enable_thinking", _ctk.get("enable_thinking", True))
+        think_tag = "[Think]" if _thinking else ""
+        merged_cfg["run_name"] = (
+            f"[{run_id}][R1][{agent_llm.upper()}][{user_llm.upper()}][Conversation][{domain}]{think_tag}"
+        )
     _apply_fresh_save_to(merged_cfg)
     return merged_cfg
 
@@ -366,6 +426,7 @@ def load_yaml_and_prepare_run(
     run_id: str,
     *,
     load_env: bool = True,
+    set_overrides: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Load a multi-run YAML file and return the merged run dict for ``run_id`` (same as the CLI).
 
@@ -377,6 +438,8 @@ def load_yaml_and_prepare_run(
         config_path: Path to the YAML config file.
         run_id: Run key under ``runs:`` (or ``default`` for single-root configs).
         load_env: If True, load ``.env`` from cwd and from the YAML parent directory.
+        set_overrides: Optional nested dict of key overrides applied after YAML merging,
+            equivalent to ``--set`` on the CLI.  Nested dicts are deep-merged.
 
     Returns:
         Merged configuration mapping ready for :func:`_build_run_config`.
@@ -394,7 +457,8 @@ def load_yaml_and_prepare_run(
         raise ValueError(f"No run matched run_id={run_id!r} in {cfg_path}")
     rid, run_cfg = selected[0]
     return _prepare_merged_cfg_for_run(
-        rid, run_cfg, all_runs, root_defaults, cfg_path
+        rid, run_cfg, all_runs, root_defaults, cfg_path,
+        cli_overrides=set_overrides or None,
     )
 
 
@@ -423,7 +487,22 @@ def main() -> None:
             f"may execute in parallel (default {DEFAULT_RUN_CONCURRENCY} or run_concurrency in YAML)."
         ),
     )
+    parser.add_argument(
+        "--set",
+        dest="overrides",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help=(
+            "Override any config key after YAML merging. Use dot notation for nested keys: "
+            "--set agent_llm_args.openai_base_url=http://host:8000 "
+            "--set num_trials=3. "
+            "Values are auto-cast to int/float/bool/null; repeat flag for multiple overrides."
+        ),
+    )
     args = parser.parse_args()
+
+    cli_overrides = _parse_set_overrides(args.overrides) if args.overrides else {}
 
     cfg_path = Path(args.config).expanduser().resolve()
     # Default cwd search + .env next to the config file (import chain also loads .env via tau2.utils.utils).
@@ -439,7 +518,8 @@ def main() -> None:
         (
             run_id,
             _prepare_merged_cfg_for_run(
-                run_id, run_cfg, all_runs, root_defaults, cfg_path
+                run_id, run_cfg, all_runs, root_defaults, cfg_path,
+                cli_overrides=cli_overrides or None,
             ),
         )
         for run_id, run_cfg in selected_runs

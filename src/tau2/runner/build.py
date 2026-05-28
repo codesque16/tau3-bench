@@ -388,6 +388,10 @@ def build_text_orchestrator(
     if domain == "airline" and app:
         env_kwargs = dict(env_kwargs)
         env_kwargs["policy_path"] = Path(str(app)).expanduser().resolve()
+    tpp = getattr(config, "telecom_policy_path", None)
+    if domain in ("telecom", "telecom-workflow") and tpp:
+        env_kwargs = dict(env_kwargs)
+        env_kwargs["policy_path"] = Path(str(tpp)).expanduser().resolve()
 
     environment = build_environment(domain, solo_mode=solo_mode, env_kwargs=env_kwargs)
 
@@ -422,6 +426,7 @@ def build_text_orchestrator(
         environment=environment,
         task=task,
         max_steps=config.effective_max_steps,
+        max_user_turns=config.max_user_turns,
         max_errors=config.max_errors,
         seed=seed,
         solo_mode=solo_mode,

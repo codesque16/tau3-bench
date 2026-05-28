@@ -140,6 +140,7 @@ def _reward_info_payload(reward_info: RewardInfo) -> dict:
             "nl_assertions": _summarize_checks(reward_info.nl_assertions),
         },
         "info": reward_info.info,
+        "unknown_tool_calls": reward_info.unknown_tool_calls or [],
     }
 
 

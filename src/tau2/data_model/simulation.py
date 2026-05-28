@@ -324,6 +324,18 @@ class BaseRunConfig(BaseModel):
             default=None,
         ),
     ]
+    telecom_policy_path: Annotated[
+        Optional[str],
+        Field(
+            description=(
+                "When set for telecom / telecom-workflow domain runs, load the **full** agent "
+                "policy markdown from this file (GEPA swaps). The file should match the "
+                "concatenated <main_policy>…</main_policy><tech_support_policy>…</tech_support_policy> "
+                "shape used by the telecom environment."
+            ),
+            default=None,
+        ),
+    ]
 
     # ---- User simulator ----
     llm_user: Annotated[
@@ -587,6 +599,17 @@ class TextRunConfig(BaseRunConfig):
         Field(
             description="The maximum number of conversation turns",
             default=DEFAULT_MAX_STEPS,
+        ),
+    ]
+    max_user_turns: Annotated[
+        Optional[int],
+        Field(
+            description=(
+                "Optional cap on number of user turns in a simulation. "
+                "When reached, the run terminates with reason 'max_user_turns'."
+            ),
+            default=None,
+            ge=1,
         ),
     ]
     enforce_communication_protocol: Annotated[
@@ -1139,6 +1162,13 @@ class RewardInfo(BaseModel):
         Optional[dict],
         Field(description="Additional information about the reward.", default=None),
     ]
+    unknown_tool_calls: Annotated[
+        Optional[list[str]],
+        Field(
+            description="Tool names called by the model that do not exist in the environment.",
+            default=None,
+        ),
+    ]
 
     @property
     def partial_action_reward(self) -> Optional[dict]:
@@ -1278,6 +1308,7 @@ class TerminationReason(str, Enum):
     USER_STOP = "user_stop"
     AGENT_STOP = "agent_stop"
     MAX_STEPS = "max_steps"
+    MAX_USER_TURNS = "max_user_turns"
     TIMEOUT = "timeout"
     TOO_MANY_ERRORS = "too_many_errors"
     AGENT_ERROR = "agent_error"

@@ -7,6 +7,9 @@ from pydantic import BaseModel
 from tau2.agent.discrete_time_audio_native_agent import (
     create_discrete_time_audio_native_agent,
 )
+from tau2.agent.huggingface_completions_agent import (
+    create_huggingface_completions_agent,
+)
 from tau2.agent.llm_agent import (
     LLMGTAgent,
     LLMSoloAgent,
@@ -58,8 +61,8 @@ from tau2.domains.telecom.environment import (
 )
 from tau2.environment.environment import Environment
 from tau2.user.user_simulator import DummyUser, UserSimulator
-from tau2.user.vertex_user_simulator import VertexUserSimulator
 from tau2.user.user_simulator_base import FullDuplexUser, HalfDuplexUser
+from tau2.user.vertex_user_simulator import VertexUserSimulator
 
 
 class RegistryInfo(BaseModel):
@@ -303,6 +306,9 @@ try:
     registry.register_agent_factory(create_vertex_agent, "vertex_agent")
     registry.register_agent_factory(create_openai_agent, "openai_agent")
     registry.register_agent_factory(create_openai_completions_agent, "openai_completions_agent")
+    registry.register_agent_factory(
+        create_huggingface_completions_agent, "huggingface_completions_agent"
+    )
     registry.register_agent_factory(
         create_llm_gt_agent,
         "llm_agent_gt",

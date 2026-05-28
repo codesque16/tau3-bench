@@ -676,11 +676,12 @@ def run_tasks(
     # Create checkpoint saver and replacer (shared state for dir format)
     save_fn, replace_fn = create_checkpoint_fns(save_path, lock)
 
-    # Build argument list grouped by trial (skip already-completed runs)
-    args_by_trial: dict[int, list[tuple[Task, int, int, str]]] = {}
-    for trial in range(config.num_trials):
-        trial_args: list[tuple[Task, int, int, str]] = []
-        for i, task in enumerate(tasks):
+    # Build argument list grouped by task (skip already-completed runs)
+    args_by_task: dict[str, list[tuple[int, int, str]]] = {}  # task_id -> [(trial, seed, progress_str)]
+    task_map: dict[str, Task] = {}
+    for i, task in enumerate(tasks):
+        pending_trials: list[tuple[int, int, str]] = []
+        for trial in range(config.num_trials):
             if (trial, task.id, seeds[trial]) in done_runs:
                 console_text = Text(
                     text=f"Skipping task {task.id}, trial {trial + 1} because it has already been run.",
@@ -688,10 +689,11 @@ def run_tasks(
                 )
                 ConsoleDisplay.console.print(console_text)
                 continue
-            progress_str = f"{i}/{len(tasks)} (trial {trial + 1}/{config.num_trials})"
-            trial_args.append((task, trial, seeds[trial], progress_str))
-        if trial_args:
-            args_by_trial[trial] = trial_args
+            progress_str = f"task {task.id} ({i + 1}/{len(tasks)}), trial {trial + 1}/{config.num_trials}"
+            pending_trials.append((trial, seeds[trial], progress_str))
+        if pending_trials:
+            args_by_task[str(task.id)] = pending_trials
+            task_map[str(task.id)] = task
 
     # Status monitor
     total_count = len(tasks) * config.num_trials
@@ -719,7 +721,7 @@ def run_tasks(
     def _run_tracked(
         task: Task, trial: int, seed: int, progress_str: str
     ) -> SimulationRun:
-        """Run a single task with tracking, retry, and hallucination retry."""
+        """Run one (task, trial) pair; opens trial_span inside the task's active span context."""
         if shutdown_event.is_set():
             raise KeyboardInterrupt("Shutdown requested")
 
@@ -738,33 +740,163 @@ def run_tasks(
             run_seed: int = seed,
             hallucination_feedback: Optional[str] = None,
         ):
-            with tracer.task_span(task_id=str(task.id)) as task_span:
-                tracer.log_task_details(task)
-                result = run_single_task(
-                    config,
-                    task,
-                    seed=run_seed,
-                    evaluation_type=evaluation_type,
-                    save_dir=save_dir,
-                    user_voice_settings=user_voice_settings,
-                    user_persona_config=user_persona_config,
-                    verbose_logs=config.verbose_logs,
-                    audio_debug=config.audio_debug if is_voice else False,
-                    audio_taps=config.audio_taps if is_voice else False,
-                    auto_review=config.auto_review,
-                    review_mode=config.review_mode,
-                    hallucination_feedback=hallucination_feedback,
-                    tracer=tracer,
+            return run_single_task(
+                config,
+                task,
+                seed=run_seed,
+                evaluation_type=evaluation_type,
+                save_dir=save_dir,
+                user_voice_settings=user_voice_settings,
+                user_persona_config=user_persona_config,
+                verbose_logs=config.verbose_logs,
+                audio_debug=config.audio_debug if is_voice else False,
+                audio_taps=config.audio_taps if is_voice else False,
+                auto_review=config.auto_review,
+                review_mode=config.review_mode,
+                hallucination_feedback=hallucination_feedback,
+                tracer=tracer,
+            )
+
+        try:
+            with tracer.trial_span(trial=trial + 1, seed=seed) as trial_span:
+                result = run_with_retry(
+                    _execute,
+                    task=task,
+                    trial=trial,
+                    seed=seed,
+                    max_retries=config.max_retries,
+                    retry_delay=config.retry_delay,
+                    console_display=console_display,
+                    save_fn=save_fn,
+                    on_retry=lambda: monitor.task_restarted(task_key),
+                    shutdown_event=shutdown_event,
                 )
+
+                # Hallucination retry: if check detects fabricated info, re-run
+                is_full_duplex = result.ticks is not None and len(result.ticks) > 0
+                hallucination_retry_count = 0
+                if hallucination_retries > 0 and is_full_duplex:
+                    while hallucination_retry_count < hallucination_retries:
+                        h_check = check_hallucination(result, task)
+                        result.hallucination_check = h_check
+
+                        if not h_check.hallucination_found:
+                            break
+
+                        hallucination_retry_count += 1
+                        n_errors = len(h_check.errors)
+
+                        retry_text = Text(
+                            text=f"  Hallucination detected on task {task.id} ({n_errors} instance(s)). "
+                            f"Re-running with feedback ({hallucination_retry_count}/{hallucination_retries})...",
+                            style="yellow",
+                        )
+                        ConsoleDisplay.console.print(retry_text)
+
+                        # Save discarded run
+                        if save_dir is not None:
+                            discarded_dir = save_dir / "hallucination_discarded"
+                            discarded_dir.mkdir(parents=True, exist_ok=True)
+                            discarded_path = (
+                                discarded_dir / "results_user_hallucination.json"
+                            )
+
+                            if discarded_path.exists():
+                                with open(discarded_path, "r") as fp:
+                                    discarded_data = json.load(fp)
+                                discarded_data["simulations"].append(
+                                    result.model_dump(mode="json")
+                                )
+                                existing_task_ids = {
+                                    t["id"] for t in discarded_data["tasks"]
+                                }
+                                if task.id not in existing_task_ids:
+                                    discarded_data["tasks"].append(
+                                        task.model_dump(mode="json")
+                                    )
+                                with open(discarded_path, "w") as fp:
+                                    json.dump(discarded_data, fp, indent=2)
+                            else:
+                                discarded_results = Results(
+                                    info=simulation_results.info,
+                                    tasks=[
+                                        t
+                                        for t in simulation_results.tasks
+                                        if t.id == task.id
+                                    ],
+                                    simulations=[result],
+                                )
+                                with open(discarded_path, "w") as fp:
+                                    fp.write(discarded_results.model_dump_json(indent=2))
+
+                            logger.info(
+                                f"Saved discarded hallucination run to {discarded_path} "
+                                f"(task {task.id}, retry {hallucination_retry_count})"
+                            )
+
+                        # Mark the discarded sim directory
+                        if save_dir is not None:
+                            sim_dir = (
+                                save_dir
+                                / "artifacts"
+                                / f"task_{task.id}"
+                                / f"sim_{result.id}"
+                            )
+                            if sim_dir.exists():
+                                try:
+                                    status = {
+                                        "status": "discarded",
+                                        "reason": "user_hallucination",
+                                        "hallucination_errors": n_errors,
+                                    }
+                                    status_path = sim_dir / "sim_status.json"
+                                    with open(status_path, "w") as f:
+                                        json.dump(status, f, indent=2)
+                                except Exception:
+                                    pass
+
+                        # Build feedback and re-run
+                        monitor.task_restarted(task_key)
+                        feedback = format_hallucination_feedback(h_check)
+                        retry_seed = seed + hallucination_retry_count * 1000
+                        result = _execute(
+                            run_seed=retry_seed,
+                            hallucination_feedback=feedback,
+                        )
+                        result.trial = trial
+
+                    result.hallucination_retries_used = hallucination_retry_count
+
+                    if hallucination_retry_count > 0:
+                        # Replace the eagerly-saved hallucinated result in the
+                        # checkpoint with the clean retry.  Use the original seed
+                        # so resume matching stays consistent.
+                        result.seed = seed
+                        replace_fn((trial, task.id, seed), result)
+
+                # Mark the final sim as the one used in results
+                if save_dir is not None:
+                    sim_dir = (
+                        save_dir / "artifacts" / f"task_{task.id}" / f"sim_{result.id}"
+                    )
+                    if sim_dir.exists():
+                        try:
+                            status = {"status": "used"}
+                            status_path = sim_dir / "sim_status.json"
+                            with open(status_path, "w") as f:
+                                json.dump(status, f, indent=2)
+                        except Exception:
+                            pass
+
                 passed = bool(
                     result.reward_info is not None and result.reward_info.reward >= 1.0
                 )
                 hit_length = _simulation_hit_length(result)
-                base = f"Task:{task.id}"
+                base = f"Trial:{trial + 1}"
                 if hit_length:
                     base = f"{base}[length]"
                 tracer.finalize_span(
-                    task_span,
+                    trial_span,
                     base_name=base,
                     passed=passed,
                     task_id=str(task.id),
@@ -773,137 +905,6 @@ def run_tasks(
                     ),
                     hit_length=hit_length,
                 )
-                return result
-
-        try:
-            result = run_with_retry(
-                _execute,
-                task=task,
-                trial=trial,
-                seed=seed,
-                max_retries=config.max_retries,
-                retry_delay=config.retry_delay,
-                console_display=console_display,
-                save_fn=save_fn,
-                on_retry=lambda: monitor.task_restarted(task_key),
-                shutdown_event=shutdown_event,
-            )
-
-            # Hallucination retry: if check detects fabricated info, re-run
-            is_full_duplex = result.ticks is not None and len(result.ticks) > 0
-            if hallucination_retries > 0 and is_full_duplex:
-                hallucination_retry_count = 0
-                while hallucination_retry_count < hallucination_retries:
-                    h_check = check_hallucination(result, task)
-                    result.hallucination_check = h_check
-
-                    if not h_check.hallucination_found:
-                        break
-
-                    hallucination_retry_count += 1
-                    n_errors = len(h_check.errors)
-
-                    retry_text = Text(
-                        text=f"  Hallucination detected on task {task.id} ({n_errors} instance(s)). "
-                        f"Re-running with feedback ({hallucination_retry_count}/{hallucination_retries})...",
-                        style="yellow",
-                    )
-                    ConsoleDisplay.console.print(retry_text)
-
-                    # Save discarded run
-                    if save_dir is not None:
-                        discarded_dir = save_dir / "hallucination_discarded"
-                        discarded_dir.mkdir(parents=True, exist_ok=True)
-                        discarded_path = (
-                            discarded_dir / "results_user_hallucination.json"
-                        )
-
-                        if discarded_path.exists():
-                            with open(discarded_path, "r") as fp:
-                                discarded_data = json.load(fp)
-                            discarded_data["simulations"].append(
-                                result.model_dump(mode="json")
-                            )
-                            existing_task_ids = {
-                                t["id"] for t in discarded_data["tasks"]
-                            }
-                            if task.id not in existing_task_ids:
-                                discarded_data["tasks"].append(
-                                    task.model_dump(mode="json")
-                                )
-                            with open(discarded_path, "w") as fp:
-                                json.dump(discarded_data, fp, indent=2)
-                        else:
-                            discarded_results = Results(
-                                info=simulation_results.info,
-                                tasks=[
-                                    t
-                                    for t in simulation_results.tasks
-                                    if t.id == task.id
-                                ],
-                                simulations=[result],
-                            )
-                            with open(discarded_path, "w") as fp:
-                                fp.write(discarded_results.model_dump_json(indent=2))
-
-                        logger.info(
-                            f"Saved discarded hallucination run to {discarded_path} "
-                            f"(task {task.id}, retry {hallucination_retry_count})"
-                        )
-
-                    # Mark the discarded sim directory
-                    if save_dir is not None:
-                        sim_dir = (
-                            save_dir
-                            / "artifacts"
-                            / f"task_{task.id}"
-                            / f"sim_{result.id}"
-                        )
-                        if sim_dir.exists():
-                            try:
-                                status = {
-                                    "status": "discarded",
-                                    "reason": "user_hallucination",
-                                    "hallucination_errors": n_errors,
-                                }
-                                status_path = sim_dir / "sim_status.json"
-                                with open(status_path, "w") as f:
-                                    json.dump(status, f, indent=2)
-                            except Exception:
-                                pass
-
-                    # Build feedback and re-run
-                    monitor.task_restarted(task_key)
-                    feedback = format_hallucination_feedback(h_check)
-                    retry_seed = seed + hallucination_retry_count * 1000
-                    result = _execute(
-                        run_seed=retry_seed,
-                        hallucination_feedback=feedback,
-                    )
-                    result.trial = trial
-
-                result.hallucination_retries_used = hallucination_retry_count
-
-                if hallucination_retry_count > 0:
-                    # Replace the eagerly-saved hallucinated result in the
-                    # checkpoint with the clean retry.  Use the original seed
-                    # so resume matching stays consistent.
-                    result.seed = seed
-                    replace_fn((trial, task.id, seed), result)
-
-            # Mark the final sim as the one used in results
-            if save_dir is not None:
-                sim_dir = (
-                    save_dir / "artifacts" / f"task_{task.id}" / f"sim_{result.id}"
-                )
-                if sim_dir.exists():
-                    try:
-                        status = {"status": "used"}
-                        status_path = sim_dir / "sim_status.json"
-                        with open(status_path, "w") as f:
-                            json.dump(status, f, indent=2)
-                    except Exception:
-                        pass
 
             return result
         finally:
@@ -942,84 +943,91 @@ def run_tasks(
 
         # ─────────────────────────────────────────────────────────────────
 
-        # Capture the OTEL context right now (run_span is current, no trial
+        # Capture the OTEL context right now (run_span is current, no task
         # spans yet).  We will attach this exact context before opening each
-        # trial span so that every trial span is a sibling under run_span
+        # task span so that every task span is a sibling under run_span
         # rather than nested inside the previous one.
         _run_otel_ctx = _otel_ctx.get_current()
 
-        # Open one trial span per active trial, all as siblings under run_span.
+        # Open one task span per active task, all as siblings under run_span.
         # attach/detach around each __enter__ resets the "current span" back to
-        # run_span before the next trial span is created, preventing nesting.
-        active_trials = [t for t in range(config.num_trials) if args_by_trial.get(t)]
-        trial_span_cms: dict[int, Any] = {}
-        trial_cv_ctxs: dict[int, Any] = {}  # contextvars.Context with trial span active
+        # run_span before the next task span is created, preventing nesting.
+        # task_details is logged immediately so it appears as the first child.
+        active_task_ids = list(args_by_task.keys())
+        task_span_cms: dict[str, Any] = {}
+        task_span_objs: dict[str, Any] = {}
+        task_cv_ctxs: dict[str, Any] = {}  # contextvars.Context with task span active
 
-        for trial in active_trials:
+        for task_id in active_task_ids:
             token = _otel_ctx.attach(_run_otel_ctx)
             try:
-                cm = tracer.trial_span(trial=trial + 1, seed=seeds[trial])
-                cm.__enter__()
-                # Snapshot the contextvars state now — OTEL current span is this
-                # trial's span.  Tasks submitted for this trial will run inside it.
-                trial_cv_ctxs[trial] = contextvars.copy_context()
-                trial_span_cms[trial] = cm
+                cm = tracer.task_span(task_id=task_id)
+                span_obj = cm.__enter__()
+                tracer.log_task_details(task_map[task_id])
+                # Snapshot the contextvars state — OTEL current span is this
+                # task's span.  Trials submitted for this task will run inside it.
+                task_cv_ctxs[task_id] = contextvars.copy_context()
+                task_span_cms[task_id] = cm
+                task_span_objs[task_id] = span_obj
             finally:
                 # Detach restores the OTEL context to _run_otel_ctx so the next
                 # iteration also starts from run_span as parent.
                 _otel_ctx.detach(token)
 
-        # Single global work queue: one entry per (trial, task) combination,
-        # preserving original per-trial ordering.
-        all_queued: list[tuple[int, tuple]] = []
+        # Flat work queue: one entry per (task, trial), ordered trial-first to
+        # match original scheduling behaviour (all trial-0's before trial-1's, etc.)
+        all_queued: list[tuple[str, tuple]] = []
         for trial in range(config.num_trials):
-            for arg in args_by_trial.get(trial, []):
-                all_queued.append((trial, arg))
+            for task_id in active_task_ids:
+                for t_trial, t_seed, t_progress in args_by_task[task_id]:
+                    if t_trial == trial:
+                        all_queued.append(
+                            (task_id, (task_map[task_id], t_trial, t_seed, t_progress))
+                        )
+                        break
 
         total_work = len(all_queued)
         logger.info(
-            "Batch scheduling: max_concurrency={} total_work={} trials={}",
+            "Batch scheduling: max_concurrency={} total_work={} tasks={}",
             max_concurrency,
             total_work,
-            active_trials,
+            active_task_ids,
         )
         _slog(
             "batch_start",
             max_concurrency=max_concurrency,
             total_work=total_work,
-            trials=active_trials,
+            tasks=active_task_ids,
         )
 
-        # Results grouped by trial for correct result aggregation.
-        trial_results: dict[int, list[SimulationRun]] = {t: [] for t in active_trials}
+        # Accumulate per-task results so we can finalize task spans once all
+        # trials for a task complete.
+        task_accumulated: dict[str, list[SimulationRun]] = {tid: [] for tid in active_task_ids}
+        task_expected: dict[str, int] = {
+            tid: len(tas) for tid, tas in args_by_task.items()
+        }
 
         shared_executor = ThreadPoolExecutor(max_workers=max_concurrency)
-        in_flight: dict = {}   # future -> (trial, arg)
+        in_flight: dict = {}   # future -> (task_id, arg)
         done_count = 0
 
         def _submit_one() -> bool:
             if not all_queued or shutdown_event.is_set():
                 return False
-            trial, arg = all_queued.pop(0)
-            # arg = (task, seed, ...) — task_id is at arg[0].id
-            task_id = getattr(arg[0], "id", None) if arg else None
-            # Create a fresh copy of the trial's context snapshot for this task.
-            # We cannot share the same Context object across concurrent tasks —
-            # Context.run() raises RuntimeError if the same object is entered by
-            # more than one thread at a time.  Calling .run(copy_context) briefly
-            # enters the snapshot to produce a new independent copy that carries
-            # the correct trial span as its OTEL current span.
-            base_ctx = trial_cv_ctxs.get(trial)
+            task_id, arg = all_queued.pop(0)
+            task_obj = getattr(arg[0], "id", None) if arg else None
+            # Create a fresh copy of the task's context snapshot for this trial.
+            base_ctx = task_cv_ctxs.get(task_id)
             ctx = base_ctx.run(contextvars.copy_context) if base_ctx is not None else contextvars.copy_context()
             fut = shared_executor.submit(
                 lambda a=arg, c=ctx: c.run(_run_tracked, *a)
             )
-            in_flight[fut] = (trial, arg)
+            in_flight[fut] = (task_id, arg)
             snap = monitor.snapshot()
             logger.info(
                 "Submit: task={} trial={} in_flight={} queued_remaining={} done={} running={} peak={}",
-                task_id,
-                trial + 1,
+                task_obj,
+                arg[1] + 1,
                 len(in_flight),
                 len(all_queued),
                 done_count,
@@ -1029,7 +1037,7 @@ def run_tasks(
             _slog(
                 "submit",
                 task_id=task_id,
-                trial=trial + 1,
+                trial=arg[1] + 1,
                 in_flight=len(in_flight),
                 queued_remaining=len(all_queued),
                 done=done_count,
@@ -1049,10 +1057,33 @@ def run_tasks(
                     break
                 done_set, _ = wait(set(in_flight.keys()), return_when=FIRST_COMPLETED)
                 for future in done_set:
-                    trial, arg = in_flight.pop(future)
+                    task_id, arg = in_flight.pop(future)
                     result = future.result()
-                    trial_results[trial].append(result)
+                    task_accumulated[task_id].append(result)
+                    simulation_results.simulations.append(result)
                     done_count += 1
+
+                    # Once all trials for a task are done, finalize and close its
+                    # span immediately so it doesn't show as <ongoing> for the
+                    # rest of the run.
+                    if len(task_accumulated[task_id]) == task_expected[task_id]:
+                        successes = sum(
+                            1 for r in task_accumulated[task_id]
+                            if r.reward_info is not None and r.reward_info.reward >= 1.0
+                        )
+                        tracer.finalize_task_span(
+                            task_span_objs[task_id],
+                            task_id=task_id,
+                            successes=successes,
+                            n_trials=task_expected[task_id],
+                        )
+                        cm = task_span_cms.pop(task_id, None)
+                        if cm is not None:
+                            try:
+                                cm.__exit__(None, None, None)
+                            except Exception:
+                                pass
+
                     snap = monitor.snapshot()
                     logger.info(
                         "Complete: task={} trial={} in_flight={} queued_remaining={} "
@@ -1090,9 +1121,6 @@ def run_tasks(
                     while len(in_flight) < max_concurrency and _submit_one():
                         pass
 
-            for trial, results in trial_results.items():
-                simulation_results.simulations.extend(results)
-
         except KeyboardInterrupt:
             ConsoleDisplay.console.print(
                 "\n[bold red]Ctrl+C received — cancelling remaining tasks...[/bold red]"
@@ -1112,8 +1140,8 @@ def run_tasks(
             monitor.stop()
             if not shutdown_event.is_set():
                 shared_executor.shutdown(wait=True)
-            # Close trial spans (opened upfront as siblings under run_span).
-            for cm in trial_span_cms.values():
+            # Close task spans (opened upfront as siblings under run_span).
+            for cm in task_span_cms.values():
                 try:
                     cm.__exit__(None, None, None)
                 except Exception:

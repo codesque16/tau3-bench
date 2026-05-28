@@ -63,6 +63,13 @@ knowledge = [
 gym = [
     "gymnasium>=1.2.2",
 ]
+huggingface = [
+    "torch",
+    "transformers>=4.46.0",
+    "peft",
+    "accelerate",
+    "jinja2",
+]
 dev = [
     "pytest>=8.3.5",
     "pytest-xdist>=3.5.0",
@@ -76,7 +83,7 @@ experiments = [
     "scikit-learn>=1.6.1",
 ]
 all = [
-    "tau2[voice,knowledge,gym,dev,experiments]",
+    "tau2[voice,knowledge,gym,huggingface,dev,experiments]",
 ]
 [project.urls]
 Homepage = "https://taubench.com/"

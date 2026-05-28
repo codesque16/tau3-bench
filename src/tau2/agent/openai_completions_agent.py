@@ -35,6 +35,9 @@ llm_args keys
   injection_prefix       : str   — appended after <|turn>model\\n on the FIRST
                                    call per user turn (step 0 only); None = off
   jinja_template_path    : str   — path to .jinja file (required)
+  completion_format      : str   — ``gemma`` (default) or ``qwen``; use ``qwen`` with
+                                   Qwen jinja templates (see qwen_completions_utils)
+  chat_template_format   : str   — alias for completion_format
   continue_on_length     : bool  — if true, when finish_reason is ``length`` the
                                    partial output is stripped of Gemma special
                                    tokens, wrapped in a closed
@@ -46,6 +49,14 @@ llm_args keys
   max_length_continuations : int — max extra completion calls when continuing
                                    (default 8). Set to 1 to do exactly one
                                    wrapped retry per length hit.
+  openai_connect_timeout_seconds : float — connect timeout for /v1/completions
+                                   (default 300)
+  openai_read_timeout_seconds    : float — read timeout for /v1/completions
+                                   (default 300)
+  openai_request_max_retries     : int   — retries for transient request failures
+                                   (default 2; total attempts = retries + 1)
+  openai_request_retry_backoff_seconds : float — base backoff between retries
+                                   (default 2.0; linear backoff by attempt idx)
 """
 
 from __future__ import annotations
@@ -62,6 +73,15 @@ from loguru import logger
 from tau2.agent.llm_agent import LLMAgent
 from tau2.data_model.message import AssistantMessage, ToolCall
 from tau2.environment.tool import Tool
+from tau2.agent.qwen_completions_utils import (
+    clean_qwen_completion_chunk_text,
+    is_qwen_completion_format,
+    normalize_messages_for_qwen_template,
+    parse_qwen_completion,
+    render_qwen_prompt,
+    resolve_qwen_stop_tokens,
+    wrap_truncated_qwen_thought,
+)
 from tau2.utils.vertex_endpoint_chat import (
     prediction_usage_with_cost,
     resolve_runtime_seed,
@@ -192,6 +212,11 @@ def parse_completion(
     thinking block is complete, then strip it back out of the result.
     """
     full_text = (injection_prefix or "") + raw_output
+
+    # <eos> after a tool_call close means the model ended the sequence expecting
+    # a tool response. Rewrite to <|tool_response> so the existing
+    # removesuffix("<|tool_response>") cleanup leaves clean content.
+    full_text = full_text.replace("<tool_call|><eos>", "<tool_call|><|tool_response>")
 
     reasoning: str | None = None
     m = _THINKING_RE.search(full_text)
@@ -405,6 +430,7 @@ class OpenAICompletionsAgent(LLMAgent):
             state.messages.append(message)
 
         llm_args = self.llm_args or {}
+        use_qwen = is_qwen_completion_format(llm_args)
         model = self._get_model()
         base_url = self._get_base_url()
         start_time = time.perf_counter()
@@ -413,7 +439,12 @@ class OpenAICompletionsAgent(LLMAgent):
         chat_template_kwargs: dict = llm_args.get("chat_template_kwargs") or {}
         temperature = float(llm_args.get("temperature", 0.0) or 0.0)
         max_tokens = int(llm_args.get("max_tokens") or 2048)
-        stop_tokens: list[str] = list(llm_args.get("stop_tokens") or ["<turn|>"])
+        if llm_args.get("stop_tokens"):
+            stop_tokens = list(llm_args["stop_tokens"])
+        elif use_qwen:
+            stop_tokens = resolve_qwen_stop_tokens(llm_args)
+        else:
+            stop_tokens = ["<turn|>"]
         enable_thinking = bool(
             llm_args.get("enable_thinking", chat_template_kwargs.get("enable_thinking", True))
         )
@@ -441,19 +472,30 @@ class OpenAICompletionsAgent(LLMAgent):
             state.system_messages + state.messages,
             vertex_include_reasoning_in_request=True,
         )
+        if use_qwen:
+            api_messages = normalize_messages_for_qwen_template(api_messages)
 
         # Apply injection prefix only on first call after a user message
         # (not after tool results — template ends with <tool_response|> there)
         last_role = api_messages[-1]["role"] if api_messages else "user"
         active_prefix = injection_prefix if last_role == "user" else None
 
-        prompt_str = render_prompt(
-            messages=api_messages,
-            tools=openai_tools or None,
-            enable_thinking=enable_thinking,
-            injection_prefix=active_prefix,
-            template_path=template_path,
-        )
+        if use_qwen:
+            prompt_str = render_qwen_prompt(
+                messages=api_messages,
+                tools=openai_tools or None,
+                enable_thinking=enable_thinking,
+                injection_prefix=active_prefix,
+                template_path=template_path,
+            )
+        else:
+            prompt_str = render_prompt(
+                messages=api_messages,
+                tools=openai_tools or None,
+                enable_thinking=enable_thinking,
+                injection_prefix=active_prefix,
+                template_path=template_path,
+            )
 
         payload: dict[str, Any] = {
             "model":       model,
@@ -464,6 +506,18 @@ class OpenAICompletionsAgent(LLMAgent):
             "skip_special_tokens": skip_special_tokens,
             "include_stop_str_in_output": True,
         }
+        payload["_connect_timeout_seconds"] = float(
+            llm_args.get("openai_connect_timeout_seconds", 300.0)
+        )
+        payload["_read_timeout_seconds"] = float(
+            llm_args.get("openai_read_timeout_seconds", 300.0)
+        )
+        payload["_request_max_retries"] = int(
+            llm_args.get("openai_request_max_retries", 2)
+        )
+        payload["_request_retry_backoff_seconds"] = float(
+            llm_args.get("openai_request_retry_backoff_seconds", 2.0)
+        )
         if runtime_seed is not None:
             payload["seed"] = int(runtime_seed)
 
@@ -528,6 +582,7 @@ class OpenAICompletionsAgent(LLMAgent):
                 openai_tools=openai_tools or None,
                 raw_input_prompt=current_prompt,
                 active_prefix=active_prefix if continuations_done == 0 else None,
+                parse_completion_fn=parse_qwen_completion if use_qwen else parse_completion,
             )
             pred_list.append(pred)
             choices = pred.get("choices") or []
@@ -578,9 +633,14 @@ class OpenAICompletionsAgent(LLMAgent):
             # retries (``continuations_done > 0``) follow a ``<channel|>`` we
             # already emitted, so a full fresh open+close wrap is correct.
             has_open_thought = bool(active_prefix) and continuations_done == 0
-            wrapped = _wrap_truncated_thought(
-                chunk, has_open_thought=has_open_thought
-            )
+            if use_qwen:
+                wrapped = wrap_truncated_qwen_thought(
+                    chunk, has_open_thought=has_open_thought
+                )
+            else:
+                wrapped = _wrap_truncated_thought(
+                    chunk, has_open_thought=has_open_thought
+                )
             chunk_texts.append(wrapped)
             current_prompt = current_prompt + wrapped
             continuations_done += 1
@@ -611,9 +671,15 @@ class OpenAICompletionsAgent(LLMAgent):
         pred = _merge_openai_completion_predictions(pred_list)
         elapsed = time.perf_counter() - start_time
 
-        raw_text = _clean_completion_chunk_text("".join(chunk_texts))
+        joined = "".join(chunk_texts)
+        raw_text = (
+            clean_qwen_completion_chunk_text(joined)
+            if use_qwen
+            else _clean_completion_chunk_text(joined)
+        )
 
-        reasoning, tool_calls_raw, content = parse_completion(
+        parse_fn = parse_qwen_completion if use_qwen else parse_completion
+        reasoning, tool_calls_raw, content = parse_fn(
             raw_output=raw_text,
             injection_prefix=active_prefix,
         )
@@ -693,6 +759,7 @@ def _completions_generate_with_logfire(
     openai_tools: list[dict[str, Any]] | None,
     raw_input_prompt: str,
     active_prefix: str | None,
+    parse_completion_fn: Any = parse_completion,
 ) -> dict[str, Any]:
     """
     POST /v1/completions and emit a logfire span + render event.
@@ -721,16 +788,60 @@ def _completions_generate_with_logfire(
         logfire = None
         span_cm = nullcontext()
 
-    r = requests.post(
-        base_url.rstrip("/") + "/v1/completions",
-        json=payload,
-        timeout=300,
+    connect_timeout = float(payload.pop("_connect_timeout_seconds", 300.0))
+    read_timeout = float(payload.pop("_read_timeout_seconds", 300.0))
+    request_max_retries = max(0, int(payload.pop("_request_max_retries", 2)))
+    request_retry_backoff_seconds = max(
+        0.0, float(payload.pop("_request_retry_backoff_seconds", 2.0))
     )
-    if r.status_code != 200:
+
+    last_error: Exception | None = None
+    retries_left = request_max_retries
+    while True:
+        try:
+            r = requests.post(
+                base_url.rstrip("/") + "/v1/completions",
+                json=payload,
+                timeout=(connect_timeout, read_timeout),
+            )
+            if r.status_code in {408, 409, 429, 500, 502, 503, 504}:
+                raise RuntimeError(
+                    f"openai_completions_agent transient status {r.status_code}: {r.text[:500]}"
+                )
+            if r.status_code != 200:
+                raise RuntimeError(
+                    f"openai_completions_agent: /v1/completions returned {r.status_code}: {r.text[:500]}"
+                )
+            pred = r.json()
+            break
+        except (
+            requests.exceptions.ConnectTimeout,
+            requests.exceptions.ReadTimeout,
+            requests.exceptions.ConnectionError,
+            requests.exceptions.Timeout,
+            requests.exceptions.RequestException,
+            RuntimeError,
+        ) as e:
+            last_error = e
+            if retries_left <= 0:
+                raise
+            retry_attempt = (request_max_retries - retries_left) + 1
+            sleep_seconds = request_retry_backoff_seconds * retry_attempt
+            logger.warning(
+                "openai_completions_agent request failed (attempt {} / {}), retrying in {:.1f}s: {}",
+                retry_attempt,
+                request_max_retries + 1,
+                sleep_seconds,
+                e,
+            )
+            time.sleep(sleep_seconds)
+            retries_left -= 1
+
+    if "pred" not in locals():
         raise RuntimeError(
-            f"openai_completions_agent: /v1/completions returned {r.status_code}: {r.text[:500]}"
+            "openai_completions_agent request failed without response"
+            + (f": {last_error}" if last_error else "")
         )
-    pred = r.json()
 
     choices = pred.get("choices") or []
     raw_text = (choices[0].get("text") or "") if choices else ""
@@ -741,7 +852,7 @@ def _completions_generate_with_logfire(
     total_tokens = int(usage.get("total_tokens") or (prompt_tokens + completion_tokens))
 
     # Parse output for logfire events (same as openai_generate_with_logfire)
-    reasoning_only, tool_calls_raw, body_only = parse_completion(
+    reasoning_only, tool_calls_raw, body_only = parse_completion_fn(
         raw_output=raw_text,
         injection_prefix=active_prefix,
     )

@@ -72,6 +72,16 @@ class RunTracer:
     ) -> None:
         return None
 
+    def finalize_task_span(
+        self,
+        span: Any,
+        *,
+        task_id: str,
+        successes: int,
+        n_trials: int,
+    ) -> None:
+        return None
+
 
 class LogfireRunTracer(RunTracer):
     def _set_span_display_name(self, span: Any, name: str) -> None:
@@ -207,6 +217,20 @@ class LogfireRunTracer(RunTracer):
             for key, value in attrs.items():
                 if value is not None:
                     span.set_attribute(key, value)
+
+    def finalize_task_span(
+        self,
+        span: Any,
+        *,
+        task_id: str,
+        successes: int,
+        n_trials: int,
+    ) -> None:
+        self._set_span_display_name(span, f"Task:{task_id} [{successes}/{n_trials}]")
+        if span is not None and hasattr(span, "set_attribute"):
+            span.set_attribute("successes", successes)
+            span.set_attribute("n_trials", n_trials)
+            span.set_attribute("passed", successes == n_trials)
 
 
 def build_run_id(config: RunConfig, *, policy_name: Optional[str] = None) -> str:

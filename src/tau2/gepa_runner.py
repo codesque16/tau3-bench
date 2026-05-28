@@ -167,8 +167,9 @@ def run_gepa_evaluation_task(
         yaml_config_path: Same file passed to ``tau2config --config``.
         run_id: Run id under ``runs:`` (e.g. ``retail_conv_full_gemma4_26b_fp8_cloud_run``).
         task_id: Single task id string (must exist in the task set for this domain).
-        candidate_policy_text: Full policy markdown written to a temp file; retail loads it
-            via ``retail_policy_path``.
+        candidate_policy_text: Full policy markdown written to a temp file; the run YAML domain
+            selects which path field is set: ``retail_policy_path``, ``airline_policy_path``, or
+            ``telecom_policy_path`` (telecom expects the combined main+tech_support markdown).
         seed: Optional per-simulation seed (overrides merged YAML seed when set).
         gepa_artifact_dir: Directory under which ``policy_candidate.md`` and per-run artifacts
             are written (must exist or will be created).
@@ -191,7 +192,18 @@ def run_gepa_evaluation_task(
     merged = dict(merged)
     merged["num_trials"] = 1
     merged["task_ids"] = [str(task_id)]
-    merged["retail_policy_path"] = str(policy_path.resolve())
+    policy_path_str = str(policy_path.resolve())
+    domain = str(merged.get("domain") or "").strip().lower()
+    # Only one override key is honored by build_text_orchestrator; avoid stale keys.
+    merged.pop("retail_policy_path", None)
+    merged.pop("airline_policy_path", None)
+    merged.pop("telecom_policy_path", None)
+    if domain == "airline":
+        merged["airline_policy_path"] = policy_path_str
+    elif domain in ("telecom", "telecom-workflow"):
+        merged["telecom_policy_path"] = policy_path_str
+    else:
+        merged["retail_policy_path"] = policy_path_str
     if seed is not None:
         merged["seed"] = int(seed)
     base_save = merged.get("save_to") or run_id

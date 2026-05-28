@@ -354,13 +354,18 @@ class Environment:
             for action in initialization_actions:
                 self.run_env_function_call(action)
 
+        unknown_tool_calls: list[str] = []
         action_responses = get_actions_from_messages(message_history)
         for tool_call, expected_response in action_responses:
             if not self._has_tool(tool_call.name):
-                raise ValueError(
-                    f"Unknown tool '{tool_call.name}' encountered during replay. "
-                    "The tool does not exist in the current environment."
+                # Model hallucinated a non-existent tool during the simulation;
+                # it can't have mutated state, so skip it and continue replay.
+                logger.warning(
+                    "set_state replay: skipping unknown tool '{}' (not in environment)",
+                    tool_call.name,
                 )
+                unknown_tool_calls.append(tool_call.name)
+                continue
             # Non-mutating tools (reads, thinks, etc.) don't change state --
             # skip them to avoid re-execution and non-deterministic output
             # comparison issues.
@@ -380,6 +385,7 @@ class Environment:
                     f"Tool call:\n{tool_call}\n\nReturned:\n{response}\n\nExpected:\n{expected_response}"
                 )
         self.sync_tools()
+        return unknown_tool_calls
 
     @classmethod
     def to_json_str(cls, resp: Any) -> str:

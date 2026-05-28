@@ -438,6 +438,7 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
         environment: Environment,
         task: Task,
         max_steps: int = 100,
+        max_user_turns: Optional[int] = None,
         max_errors: int = 10,
         seed: Optional[int] = None,
         solo_mode: bool = False,
@@ -460,6 +461,7 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
             environment: The environment instance that handles tool execution and maintains state.
             task: The task specification containing initial state, goals, and evaluation criteria.
             max_steps: Maximum number of simulation steps before termination. Defaults to 100.
+            max_user_turns: Optional cap on the number of user turns before terminating.
             max_errors: Maximum number of tool execution errors before termination. Defaults to 10.
             seed: Optional random seed for reproducibility of agent and user behavior. Defaults to None.
             solo_mode: If True, agent operates without user interaction (only tool calls allowed).
@@ -492,6 +494,8 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
         self.solo_mode = solo_mode
         self.assistant_solo_mode = assistant_solo_mode
         self.validate_communication = validate_communication
+        self.max_user_turns = max_user_turns
+        self.user_turn_count = 0
 
         # Turn-based routing state
         self.from_role: Optional[Role] = None
@@ -674,6 +678,9 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
                     f"Last message should be of type AssistantMessage, UserMessage, or ToolMessage, got {type(last_message)}"
                 )
             self.trajectory = message_history
+            self.user_turn_count = sum(
+                1 for msg in self.trajectory if isinstance(msg, UserMessage)
+            )
         else:
             # No message history - initialize fresh
             if self.assistant_solo_mode:
@@ -686,6 +693,7 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
                 self.message = first_message
                 self.from_role = Role.USER
                 self.to_role = Role.AGENT
+                self.user_turn_count = 1
             elif not self.solo_mode:
                 self.user_state = self.user.get_init_state()
                 first_message = deepcopy(DEFAULT_FIRST_AGENT_MESSAGE)
@@ -806,6 +814,12 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
         if self.step_count >= self.max_steps:
             self.done = True
             self.termination_reason = TerminationReason.MAX_STEPS
+        if (
+            self.max_user_turns is not None
+            and self.user_turn_count >= self.max_user_turns
+        ):
+            self.done = True
+            self.termination_reason = TerminationReason.MAX_USER_TURNS
         if self.num_errors >= self.max_errors:
             self.done = True
             self.termination_reason = TerminationReason.TOO_MANY_ERRORS
@@ -924,6 +938,7 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
             self._update_voice_metadata(user_msg)
 
             self.trajectory.append(user_msg)
+            self.user_turn_count += 1
             self.message = user_msg
             self.from_role = Role.USER
             if user_msg.is_tool_call():

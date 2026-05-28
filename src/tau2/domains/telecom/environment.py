@@ -1,7 +1,7 @@
 # Copyright Sierra
 from functools import partial
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 from tau2.data_model.tasks import Task
 from tau2.domains.telecom.data_model import LineStatus, TelecomDB
@@ -98,6 +98,7 @@ def get_environment(
     user_db: Optional[TelecomUserDB] = None,
     solo_mode: bool = False,
     policy_type: str = "manual",  # "manual" or "workflow"
+    policy_path: Optional[Union[str, Path]] = None,
 ) -> TelecomEnvironment:
     if db is None:
         db = TelecomDB.load(TELECOM_DB_PATH)
@@ -105,32 +106,45 @@ def get_environment(
     if user_db is None:
         user_db = TelecomUserDB.load(TELECOM_USER_DB_PATH)
     user_tools = TelecomUserTools(user_db)
-    if not solo_mode:
-        policy_path = TELECOM_MAIN_POLICY_PATH
+    if policy_path is not None:
+        resolved = Path(policy_path).expanduser().resolve()
+        policy = resolved.read_text(encoding="utf-8")
+    elif not solo_mode:
+        _main_path = TELECOM_MAIN_POLICY_PATH
         if policy_type == "manual":
             tech_support_policy_path = TELECOM_TECH_SUPPORT_POLICY_MANUAL_PATH
         elif policy_type == "workflow":
             tech_support_policy_path = TELECOM_TECH_SUPPORT_POLICY_WORKFLOW_PATH
         else:
             raise ValueError(f"Invalid policy type: {policy_type}")
+        main_policy = load_file(_main_path)
+        tech_support_policy = load_file(tech_support_policy_path)
+        policy = (
+            "<main_policy>\n"
+            + main_policy
+            + "\n</main_policy>\n"
+            + "<tech_support_policy>\n"
+            + tech_support_policy
+            + "\n</tech_support_policy>"
+        )
     else:
-        policy_path = TELECOM_MAIN_POLICY_SOLO_PATH
+        _solo_main = TELECOM_MAIN_POLICY_SOLO_PATH
         if policy_type == "manual":
             tech_support_policy_path = TELECOM_TECH_SUPPORT_POLICY_MANUAL_SOLO_PATH
         elif policy_type == "workflow":
             tech_support_policy_path = TELECOM_TECH_SUPPORT_POLICY_WORKFLOW_SOLO_PATH
         else:
             raise ValueError(f"Invalid policy type: {policy_type}")
-    main_policy = load_file(policy_path)
-    tech_support_policy = load_file(tech_support_policy_path)
-    policy = (
-        "<main_policy>\n"
-        + main_policy
-        + "\n</main_policy>\n"
-        + "<tech_support_policy>\n"
-        + tech_support_policy
-        + "\n</tech_support_policy>"
-    )
+        main_policy = load_file(_solo_main)
+        tech_support_policy = load_file(tech_support_policy_path)
+        policy = (
+            "<main_policy>\n"
+            + main_policy
+            + "\n</main_policy>\n"
+            + "<tech_support_policy>\n"
+            + tech_support_policy
+            + "\n</tech_support_policy>"
+        )
     if policy_type == "manual":
         domain_name = "telecom"
     else:

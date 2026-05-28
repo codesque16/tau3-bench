@@ -1,0 +1,97 @@
+run_concurrency: 6
+
+# Shared defaults inherited by all runs below.
+# run_name is auto-generated as [<run_key>][R1][<agent_llm>][<user_llm>][Conversation][Airline]
+# Override anything per-replica with --set on the CLI, e.g.:
+#
+#   uv run tau2config --config examples/airline_runs_final_completions_api_3_runs_each.yaml \
+#     --run-ids mermaid_injection \
+#     --set agent_llm_args.openai_base_url=http://34.134.150.230:8000 \
+#     --set save_to=airline_conv_openai_agent_mermaid_no_thinking_instructions_injection_completions_R2
+#
+domain: airline
+num_trials: 5
+trial_concurrency: 5
+max_concurrency: 180
+verbose_logs: true
+seed: -1
+continue_on_length: false
+max_length_continuations: 1
+max_user_turns: 10
+agent: openai_completions_agent
+fresh: true
+agent_llm: gemma4-e4b-it-openai
+agent_llm_args:
+  openai_base_url: "http://34.136.201.142:8000"   # default server; override via --set
+  openai_api_key: "EMPTY"
+  # openai_model: "google/gemma-4-26B-A4B-it"
+  openai_model: "google/gemma-4-e4b-it"
+  temperature: 0
+  top_p: 0.95
+  top_k: 64
+  max_tokens: 4096
+  openai_connect_timeout_seconds: 120
+  openai_read_timeout_seconds: 300
+  openai_request_max_retries: 2
+  openai_request_retry_backoff_seconds: 5.0
+  skip_special_tokens: false
+  # jinja_template_path: "../scripts/gcloud_scripts/gemma4_26b_injected_add_injection.jinja"
+  jinja_template_path: "../scripts/gcloud_scripts/gemma4_e4b_chat_template_original.jinja"
+  chat_template_kwargs:
+    enable_thinking: false
+    add_generation_prompt: true
+user: vertex_user_simulator
+user_llm: gemini-3.1-pro-preview
+user_llm_args:
+  temperature: 0.3
+
+runs:
+  original_policy:
+    save_to: airline_conv_openai_agent_original_policy_completions_R1
+    airline_policy_path: data/tau2/domains/airline/policy.md
+
+  original_policy_gemini:
+    save_to: airline_conv_openai_agent_original_policy_completions_R1
+    airline_policy_path: data/tau2/domains/airline/policy.md
+    agent: vertex_agent
+    agent_llm: gemini-3.1-pro-preview
+    agent_llm_args:
+      temperature: 0
+      reasoning_level: low
+
+  mermaid:
+    save_to: airline_conv_openai_agent_mermaid_no_thinking_instructions_completions_R1
+    airline_policy_path: data/tau2/domains/airline/policy_gepa_4_32ex.md
+
+  mermaid_injection:
+    save_to: airline_conv_openai_agent_mermaid_no_thinking_instructions_injection_completions_R1
+    airline_policy_path: data/tau2/domains/airline/policy_gepa_4_32ex.md
+    agent_llm_args:
+      openai_base_url: "http://34.134.150.230:8000"  # default R1 server; override via --set
+      chat_template_kwargs:
+        injection_prefix: "<|channel>thought\nLet me first start by the reasoning on the SOP graph. I will focus on the relevant nodes, fetch relevant policies and tool_hints as per the instructions and structure.\nSOP_POLICIES:\n\tGLOBAL:\n\t\trelevant_policies:"
+
+  opus_policy:
+    save_to: airline_conv_openai_agent_opus_policy_completions_R1
+    airline_policy_path: data/tau2/domains/airline/policy_opus.md
+
+  gepa_best_mermaid_injection:
+    save_to: airline_conv_openai_agent_gepa_best_mermaid_injection_completions_R1
+    airline_policy_path: data/tau2/domains/airline/policy_gepa_4_32ex_10it.md
+    agent_llm_args:
+      openai_base_url: "http://34.134.150.230:8000"  # default R1 server; override via --set
+      chat_template_kwargs:
+        injection_prefix: "<|channel>thought\nLet me first start by the reasoning on the SOP graph. I will focus on the relevant nodes, fetch relevant policies and tool_hints as per the instructions and structure.\nSOP_POLICIES:\n\tGLOBAL:\n\t\trelevant_policies:"
+
+  gepa_best_mermaid:
+    save_to: airline_conv_openai_agent_gepa_best_mermaid_completions_R1
+    airline_policy_path: data/tau2/domains/airline/policy_gepa_4_32ex_10it.md
+
+  gepa_best_mermaid_gemini:
+    save_to: airline_conv_openai_agent_gepa_best_mermaid_completions_R1
+    airline_policy_path: data/tau2/domains/airline/policy_gepa_4_32ex_10it.md
+    agent: vertex_agent
+    agent_llm: gemini-3.1-pro-preview
+    agent_llm_args:
+      temperature: 0
+      reasoning_level: low

@@ -1,0 +1,63 @@
+run_concurrency: 1
+
+# Compare Qwen base vs LoRA fine-tuned checkpoint locally via huggingface_completions_agent.
+# Override paths on the CLI, e.g.:
+#
+#   uv run tau2config --config examples/airline_runs_hf_base_vs_finetuned.yaml \
+#     --run-ids base,finetuned \
+#     --set agent_llm_args.adapter_path=~/my-lora/checkpoint-36 \
+#     --set task_ids='["1","2"]'
+#
+# Run a single variant:
+#
+#   uv run tau2config --config examples/airline_runs_hf_base_vs_finetuned.yaml --run-ids finetuned
+#
+domain: airline
+task_ids: ["1", "2", "26", "48"]
+num_trials: 3
+trial_concurrency: 1
+max_concurrency: 4
+verbose_logs: true
+seed: -1
+continue_on_length: false
+max_length_continuations: 1
+max_user_turns: 10
+fresh: true
+
+agent: huggingface_completions_agent
+agent_llm: Qwen/Qwen3.5-2B
+agent_llm_args:
+  model_id: "Qwen/Qwen3.5-2B"
+  device: "cuda:0"
+  torch_dtype: bfloat16
+  attn_implementation: flash_attention_2
+  trust_remote_code: true
+  completion_format: qwen
+  jinja_template_path: "../scripts/gcloud_scripts/qwen35-27b-fp8.jinja"
+  temperature: 0
+  top_p: 0.95
+  top_k: 64
+  max_tokens: 4096
+  skip_special_tokens: false
+  enable_thinking: true
+  chat_template_kwargs:
+    enable_thinking: true
+    add_generation_prompt: true
+
+user: vertex_user_simulator
+user_llm: gemini-3.1-pro-preview
+user_llm_args:
+  temperature: 0.3
+
+runs:
+  base:
+    save_to: airline_hf_qwen35_2b_base_tasks_1_2_26_48
+    airline_policy_path: data/tau2/domains/airline/policy.md
+    agent_llm_args:
+      adapter_path: null
+
+  finetuned:
+    save_to: airline_hf_qwen35_2b_finetuned_tasks_1_2_26_48
+    airline_policy_path: data/tau2/domains/airline/policy.md
+    agent_llm_args:
+      adapter_path: "~/qwen3-9b-agentic-lora-fa2/checkpoint-36"
