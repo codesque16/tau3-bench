@@ -16,7 +16,7 @@ domain: airline
 task_ids: ["1", "2", "26", "48"]
 num_trials: 3
 trial_concurrency: 1
-max_concurrency: 4
+max_concurrency: 1
 verbose_logs: true
 seed: -1
 continue_on_length: false

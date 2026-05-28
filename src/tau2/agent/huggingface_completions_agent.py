@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -72,6 +73,7 @@ class _HFModelHandle:
     """Lazy-loaded model + tokenizer, cached per process."""
 
     _cache: dict[_HFModelKey, "_HFModelHandle"] = {}
+    _load_lock = threading.Lock()
 
     def __init__(
         self,
@@ -85,6 +87,7 @@ class _HFModelHandle:
         self.tokenizer = tokenizer
         self.model_id = model_id
         self.adapter_path = adapter_path
+        self._generate_lock = threading.Lock()
 
     @classmethod
     def from_llm_args(cls, llm_args: dict[str, Any], llm: str) -> "_HFModelHandle":
@@ -112,9 +115,16 @@ class _HFModelHandle:
             attn_implementation=attn_implementation,
             trust_remote_code=trust_remote_code,
         )
-        if key not in cls._cache:
-            cls._cache[key] = cls._load(key)
-        return cls._cache[key]
+        cached = cls._cache.get(key)
+        if cached is not None:
+            return cached
+        with cls._load_lock:
+            cached = cls._cache.get(key)
+            if cached is not None:
+                return cached
+            handle = cls._load(key)
+            cls._cache[key] = handle
+            return handle
 
     @classmethod
     def _load(cls, key: _HFModelKey) -> "_HFModelHandle":
@@ -146,6 +156,8 @@ class _HFModelHandle:
         model_kwargs: dict[str, Any] = {
             "dtype": dtype,
             "trust_remote_code": key.trust_remote_code,
+            # Avoid meta-device init; concurrent .to(cuda) on meta tensors raises.
+            "low_cpu_mem_usage": False,
         }
         if key.attn_implementation:
             model_kwargs["attn_implementation"] = key.attn_implementation
@@ -300,16 +312,16 @@ def _hf_local_generate(
     gen_kwargs["do_sample"] = not greedy
     if not greedy:
         gen_kwargs["temperature"] = float(temperature)
-    if top_p is not None:
-        gen_kwargs["top_p"] = float(top_p)
-    if top_k is not None:
-        gen_kwargs["top_k"] = int(top_k)
+        if top_p is not None:
+            gen_kwargs["top_p"] = float(top_p)
+        if top_k is not None:
+            gen_kwargs["top_k"] = int(top_k)
     if seed is not None:
         torch.manual_seed(int(seed))
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(int(seed))
 
-    with torch.inference_mode():
+    with handle._generate_lock, torch.inference_mode():
         output_ids = model.generate(
             input_ids,
             attention_mask=attention_mask,
