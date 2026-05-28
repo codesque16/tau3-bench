@@ -392,65 +392,73 @@ def _hf_completions_generate_with_logfire(
         logfire = None
         span_cm = nullcontext()
 
-    pred = _hf_local_generate(
-        handle=handle,
-        prompt=str(payload["prompt"]),
-        max_tokens=int(payload["max_tokens"]),
-        temperature=float(payload.get("temperature", 0.0) or 0.0),
-        top_p=payload.get("top_p"),
-        top_k=payload.get("top_k"),
-        stop_tokens=list(payload.get("stop") or []),
-        skip_special_tokens=bool(payload.get("skip_special_tokens", False)),
-        include_stop_str_in_output=bool(
-            payload.get("include_stop_str_in_output", True)
-        ),
-        seed=payload.get("seed"),
-    )
-
-    choices = pred.get("choices") or []
-    raw_text = (choices[0].get("text") or "") if choices else ""
-    finish_reason = (choices[0].get("finish_reason") or "") if choices else ""
-    usage = pred.get("usage") or {}
-    prompt_tokens = int(usage.get("prompt_tokens") or 0)
-    completion_tokens = int(usage.get("completion_tokens") or 0)
-    total_tokens = int(usage.get("total_tokens") or (prompt_tokens + completion_tokens))
-
-    reasoning_only, tool_calls_raw, body_only = parse_completion_fn(
-        raw_output=raw_text,
-        injection_prefix=active_prefix,
-    )
-    response_tool_calls = [
-        {
-            "id": tc.get("id", ""),
-            "type": "function",
-            "function": {
-                "name": (tc.get("function") or {}).get("name", ""),
-                "arguments": json.dumps((tc.get("function") or {}).get("arguments") or {}),
-            },
-        }
-        for tc in tool_calls_raw
-    ]
-
-    last_assistant_event = _response_to_all_messages_event(
-        include_thoughts=True,
-        reasoning=reasoning_only or "",
-        reasoning_blocks=[],
-        output_text_blocks=[],
-        output_text=body_only,
-        response_tool_calls=response_tool_calls,
-    )
-    input_messages_events = _openai_chat_messages_to_all_messages_events(api_messages)
-    all_messages_events = input_messages_events + [last_assistant_event]
-    response_data = {
-        "message": {
-            "role": "assistant",
-            "content": last_assistant_event.get("content"),
-            "reasoning": reasoning_only or None,
-            "tool_calls": response_tool_calls or None,
-        }
-    }
-
     with span_cm as span:
+        generate_start = time.perf_counter()
+        pred = _hf_local_generate(
+            handle=handle,
+            prompt=str(payload["prompt"]),
+            max_tokens=int(payload["max_tokens"]),
+            temperature=float(payload.get("temperature", 0.0) or 0.0),
+            top_p=payload.get("top_p"),
+            top_k=payload.get("top_k"),
+            stop_tokens=list(payload.get("stop") or []),
+            skip_special_tokens=bool(payload.get("skip_special_tokens", False)),
+            include_stop_str_in_output=bool(
+                payload.get("include_stop_str_in_output", True)
+            ),
+            seed=payload.get("seed"),
+        )
+        generate_seconds = time.perf_counter() - generate_start
+
+        choices = pred.get("choices") or []
+        raw_text = (choices[0].get("text") or "") if choices else ""
+        finish_reason = (choices[0].get("finish_reason") or "") if choices else ""
+        usage = pred.get("usage") or {}
+        prompt_tokens = int(usage.get("prompt_tokens") or 0)
+        completion_tokens = int(usage.get("completion_tokens") or 0)
+        total_tokens = int(
+            usage.get("total_tokens") or (prompt_tokens + completion_tokens)
+        )
+
+        reasoning_only, tool_calls_raw, body_only = parse_completion_fn(
+            raw_output=raw_text,
+            injection_prefix=active_prefix,
+        )
+        response_tool_calls = [
+            {
+                "id": tc.get("id", ""),
+                "type": "function",
+                "function": {
+                    "name": (tc.get("function") or {}).get("name", ""),
+                    "arguments": json.dumps(
+                        (tc.get("function") or {}).get("arguments") or {}
+                    ),
+                },
+            }
+            for tc in tool_calls_raw
+        ]
+
+        last_assistant_event = _response_to_all_messages_event(
+            include_thoughts=True,
+            reasoning=reasoning_only or "",
+            reasoning_blocks=[],
+            output_text_blocks=[],
+            output_text=body_only,
+            response_tool_calls=response_tool_calls,
+        )
+        input_messages_events = _openai_chat_messages_to_all_messages_events(
+            api_messages
+        )
+        all_messages_events = input_messages_events + [last_assistant_event]
+        response_data = {
+            "message": {
+                "role": "assistant",
+                "content": last_assistant_event.get("content"),
+                "reasoning": reasoning_only or None,
+                "tool_calls": response_tool_calls or None,
+            }
+        }
+
         if logfire is not None and span is not None and hasattr(span, "set_attribute"):
             span.set_attribute("llm.model_name", model_name)
             span.set_attribute("llm.system", "huggingface")
@@ -464,6 +472,7 @@ def _hf_completions_generate_with_logfire(
             span.set_attribute("llm.token_count.prompt", prompt_tokens)
             span.set_attribute("llm.token_count.completion", completion_tokens)
             span.set_attribute("llm.token_count.total", total_tokens)
+            span.set_attribute("generation_time_seconds", generate_seconds)
             span.set_attribute("tool_round", tool_round)
             span.set_attribute("all_messages_events", all_messages_events)
             span.set_attribute("response_data", response_data)
@@ -480,6 +489,7 @@ def _hf_completions_generate_with_logfire(
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
                 total_tokens=total_tokens,
+                generation_time_seconds=generate_seconds,
                 raw_input_prompt=raw_input_prompt,
                 raw_output=raw_text,
                 raw_response=pred,
