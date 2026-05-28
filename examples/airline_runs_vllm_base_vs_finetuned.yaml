@@ -1,0 +1,59 @@
+run_concurrency: 1
+
+# Compare Qwen base vs LoRA fine-tuned checkpoint via in-process vLLM.
+#
+#   cd tau3-bench-fork
+#   PYTHONPATH=src python -m tau2.config_cli \
+#     --config examples/airline_runs_vllm_base_vs_finetuned.yaml \
+#     --run-ids base finetuned
+#
+domain: airline
+task_ids: ["1", "2", "26", "48"]
+num_trials: 3
+trial_concurrency: 1
+max_concurrency: 1
+verbose_logs: true
+seed: -1
+continue_on_length: false
+max_length_continuations: 1
+max_user_turns: 10
+fresh: true
+
+agent: vllm_completions_agent
+agent_llm: Qwen/Qwen3.5-2B
+agent_llm_args:
+  model_id: "Qwen/Qwen3.5-2B"
+  torch_dtype: bfloat16
+  trust_remote_code: true
+  enable_prefix_caching: true
+  enable_chunked_prefill: true
+  gpu_memory_utilization: 0.90
+  completion_format: qwen
+  jinja_template_path: "../scripts/gcloud_scripts/qwen35-27b-fp8.jinja"
+  temperature: 0
+  top_p: 0.95
+  top_k: 64
+  max_tokens: 4096
+  enable_thinking: true
+  chat_template_kwargs:
+    enable_thinking: true
+    add_generation_prompt: true
+
+user: vertex_user_simulator
+user_llm: gemini-3.1-pro-preview
+user_llm_args:
+  temperature: 0.3
+
+runs:
+  base:
+    save_to: airline_vllm_qwen35_2b_base_tasks_1_2_26_48
+    airline_policy_path: data/tau2/domains/airline/policy.md
+    agent_llm_args:
+      adapter_path: null
+
+  finetuned:
+    save_to: airline_vllm_qwen35_2b_finetuned_tasks_1_2_26_48
+    airline_policy_path: data/tau2/domains/airline/policy.md
+    agent_llm_args:
+      adapter_path: "~/qwen3-9b-agentic-lora-fa2/checkpoint-36"
+      max_lora_rank: 64

@@ -10,6 +10,7 @@ from tau2.agent.discrete_time_audio_native_agent import (
 from tau2.agent.huggingface_completions_agent import (
     create_huggingface_completions_agent,
 )
+from tau2.agent.vllm_completions_agent import create_vllm_completions_agent
 from tau2.agent.llm_agent import (
     LLMGTAgent,
     LLMSoloAgent,
@@ -308,6 +309,9 @@ try:
     registry.register_agent_factory(create_openai_completions_agent, "openai_completions_agent")
     registry.register_agent_factory(
         create_huggingface_completions_agent, "huggingface_completions_agent"
+    )
+    registry.register_agent_factory(
+        create_vllm_completions_agent, "vllm_completions_agent"
     )
     registry.register_agent_factory(
         create_llm_gt_agent,
