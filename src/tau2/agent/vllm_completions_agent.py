@@ -11,7 +11,8 @@ llm_args keys (in addition to shared template/sampling keys)
   adapter_path           : str   — optional LoRA adapter dir (``enable_lora``)
   torch_dtype            : str   — ``bfloat16`` (default), ``float16``, ``float32``
   trust_remote_code      : bool  — passed to vLLM (default True)
-  max_model_len          : int   — vLLM context window (optional)
+  max_model_len          : int   — vLLM context window (default 32768)
+  language_model_only    : bool  — skip vision encoder for text-only (default True)
   gpu_memory_utilization : float — vLLM GPU memory fraction (default 0.90)
   enable_prefix_caching  : bool  — reuse KV for shared prompt prefixes (default True)
   enable_chunked_prefill : bool  — chunked prefill (default True)
@@ -66,7 +67,8 @@ class _VLLMEngineKey:
     adapter_path: str
     torch_dtype: str
     trust_remote_code: bool
-    max_model_len: int | None
+    max_model_len: int
+    language_model_only: bool
     gpu_memory_utilization: float
     enable_prefix_caching: bool
     enable_chunked_prefill: bool
@@ -108,8 +110,8 @@ class _VLLMEngineHandle:
         adapter_path = os.path.expanduser(str(adapter_raw).strip()) if adapter_raw else ""
         torch_dtype = str(llm_args.get("torch_dtype") or "bfloat16").lower()
         trust_remote_code = bool(llm_args.get("trust_remote_code", True))
-        max_model_len_raw = llm_args.get("max_model_len")
-        max_model_len = int(max_model_len_raw) if max_model_len_raw is not None else None
+        max_model_len = int(llm_args.get("max_model_len") or 32768)
+        language_model_only = bool(llm_args.get("language_model_only", True))
         gpu_memory_utilization = float(llm_args.get("gpu_memory_utilization", 0.90))
         enable_prefix_caching = bool(llm_args.get("enable_prefix_caching", True))
         enable_chunked_prefill = bool(llm_args.get("enable_chunked_prefill", True))
@@ -124,6 +126,7 @@ class _VLLMEngineHandle:
             torch_dtype=torch_dtype,
             trust_remote_code=trust_remote_code,
             max_model_len=max_model_len,
+            language_model_only=language_model_only,
             gpu_memory_utilization=gpu_memory_utilization,
             enable_prefix_caching=enable_prefix_caching,
             enable_chunked_prefill=enable_chunked_prefill,
@@ -160,14 +163,14 @@ class _VLLMEngineHandle:
             "model": key.model_id,
             "dtype": key.torch_dtype,
             "trust_remote_code": key.trust_remote_code,
+            "max_model_len": key.max_model_len,
+            "language_model_only": key.language_model_only,
             "gpu_memory_utilization": key.gpu_memory_utilization,
             "enable_prefix_caching": key.enable_prefix_caching,
             "enable_chunked_prefill": key.enable_chunked_prefill,
             "tensor_parallel_size": key.tensor_parallel_size,
             "generation_config": "vllm",
         }
-        if key.max_model_len is not None:
-            llm_kwargs["max_model_len"] = key.max_model_len
         if use_lora:
             llm_kwargs["enable_lora"] = True
             llm_kwargs["max_lora_rank"] = key.max_lora_rank
@@ -175,11 +178,13 @@ class _VLLMEngineHandle:
 
         logger.info(
             "vllm_completions_agent: loading engine model={} adapter={} "
-            "prefix_caching={} dtype={}",
+            "prefix_caching={} dtype={} max_model_len={} language_model_only={}",
             key.model_id,
             key.adapter_path or None,
             key.enable_prefix_caching,
             key.torch_dtype,
+            key.max_model_len,
+            key.language_model_only,
         )
         llm = LLM(**llm_kwargs)
 

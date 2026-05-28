@@ -70,6 +70,10 @@ huggingface = [
     "accelerate",
     "jinja2",
 ]
+vllm = [
+    "vllm>=0.8.0",
+    "jinja2",
+]
 dev = [
     "pytest>=8.3.5",
     "pytest-xdist>=3.5.0",
@@ -83,7 +87,7 @@ experiments = [
     "scikit-learn>=1.6.1",
 ]
 all = [
-    "tau2[voice,knowledge,gym,huggingface,dev,experiments]",
+    "tau2[voice,knowledge,gym,huggingface,vllm,dev,experiments]",
 ]
 [project.urls]
 Homepage = "https://taubench.com/"

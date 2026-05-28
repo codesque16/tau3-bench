@@ -25,6 +25,8 @@ agent_llm_args:
   model_id: "Qwen/Qwen3.5-2B"
   torch_dtype: bfloat16
   trust_remote_code: true
+  max_model_len: 32768
+  language_model_only: true
   enable_prefix_caching: true
   enable_chunked_prefill: true
   gpu_memory_utilization: 0.90
