@@ -410,7 +410,7 @@ def run_single_task(
     task: Task,
     *,
     seed: Optional[int] = None,
-    evaluation_type: EvaluationType = EvaluationType.ALL,
+    evaluation_type: EvaluationType = EvaluationType.ALL_WITH_NL_ASSERTIONS,
     save_dir: Optional[Path] = None,
     user_voice_settings: Optional[VoiceSettings] = None,
     user_persona_config: Optional[PersonaConfig] = None,

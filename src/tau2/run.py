@@ -81,7 +81,7 @@ def run_task(
     llm_args_user: Optional[dict] = None,
     max_steps: int = 100,
     max_errors: int = 10,
-    evaluation_type: EvaluationType = EvaluationType.ALL,
+    evaluation_type: EvaluationType = EvaluationType.ALL_WITH_NL_ASSERTIONS,
     seed: Optional[int] = None,
     save_dir: Optional[Path] = None,
     enforce_communication_protocol: bool = False,

@@ -1,0 +1,69 @@
+run_concurrency: 1
+
+# Compare Qwen3.6-27B base vs Qwen3.5-2B LoRA via vLLM OpenAI-compatible /v1/completions.
+# Server: http://34.153.155.242:8000/v1/models
+#
+#   cd tau3-bench-fork
+#   PYTHONPATH=src python -m tau2.config_cli \
+#     --config examples/airline_runs_vllm_serve_base_vs_finetuned.yaml \
+#     --run-ids base finetuned
+#
+# Single variant:
+#
+#   PYTHONPATH=src python -m tau2.config_cli \
+#     --config examples/airline_runs_vllm_serve_base_vs_finetuned.yaml \
+#     --run-ids finetuned
+#
+domain: airline
+task_ids: ["0"]
+num_trials: 10
+trial_concurrency: 10
+max_concurrency: 180
+verbose_logs: true
+seed: -1
+continue_on_length: false
+max_length_continuations: 1
+max_user_turns: 10
+fresh: true
+
+agent: openai_completions_agent
+agent_llm: Qwen/Qwen3.6-27B
+agent_llm_args:
+  openai_base_url: "http://34.47.187.56:8000"
+  # openai_base_url: "http://35.246.101.162:8000"
+  openai_api_key: "EMPTY"
+  completion_format: qwen
+  jinja_template_path: "../scripts/gcloud_scripts/qwen36_27b.jinja"
+  temperature: 0.6
+  top_p: 0.95
+  top_k: 20
+  max_tokens: 4096
+  skip_special_tokens: false
+  enable_thinking: true
+  openai_connect_timeout_seconds: 120
+  openai_read_timeout_seconds: 600
+  openai_request_max_retries: 2
+  openai_request_retry_backoff_seconds: 5.0
+  chat_template_kwargs:
+    enable_thinking: true
+    add_generation_prompt: true
+
+user: vertex_user_simulator
+user_llm: gemini-3.1-pro-preview
+user_llm_args:
+  temperature: 0.3
+
+runs:
+  base:
+    save_to: airline_vllm_serve_qwen36_27b_base_tasks
+    airline_policy_path: data/tau2/domains/airline/policy.md
+    agent_llm_args:
+      jinja_template_path: "../scripts/gcloud_scripts/qwen36_27b.jinja"
+      openai_model: "/home/shiladitya/.cache/huggingface/hub/models--Qwen--Qwen3.6-27B/snapshots/6a9e13bd6fc8f0983b9b99948120bc37f49c13e9"
+      
+  finetuned:
+    save_to: airline_vllm_serve_qwen35_2b_finetuned_tasks
+    airline_policy_path: data/tau2/domains/airline/policy.md
+    agent_llm_args:
+      jinja_template_path: "../scripts/gcloud_scripts/qwen36_27b.jinja"
+      openai_model: "my-lora"
