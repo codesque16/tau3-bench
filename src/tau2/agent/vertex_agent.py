@@ -126,12 +126,14 @@ class VertexAgent(LLMAgent):
         if reasoning_level is None:
             return None
         level = str(reasoning_level).strip().upper()
+        if level == "NONE":
+            return types_module.ThinkingConfig(thinking_budget=0)
         allowed = {"LOW", "MEDIUM", "HIGH"}
         if level not in allowed:
             logger.warning(
                 "Invalid reasoning_level={} for vertex_agent; expected one of {}",
                 reasoning_level,
-                sorted(allowed),
+                sorted(allowed | {"none"}),
             )
             return None
         include_thoughts = bool(self.llm_args.get("include_thoughts", True))

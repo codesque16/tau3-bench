@@ -396,6 +396,13 @@ class BaseRunConfig(BaseModel):
             default=None,
         ),
     ]
+    tags: Annotated[
+        list[str],
+        Field(
+            description="Logfire tags attached to the run span (e.g. ['tau3', 'airline']).",
+            default_factory=list,
+        ),
+    ]
     fresh: Annotated[
         bool,
         Field(
@@ -607,6 +614,18 @@ class TextRunConfig(BaseRunConfig):
             description=(
                 "Optional cap on number of user turns in a simulation. "
                 "When reached, the run terminates with reason 'max_user_turns'."
+            ),
+            default=None,
+            ge=1,
+        ),
+    ]
+    max_consecutive_assistant_turns: Annotated[
+        Optional[int],
+        Field(
+            description=(
+                "Optional cap on consecutive assistant turns without a user turn "
+                "(i.e. back-to-back tool calls). When reached, the run terminates "
+                "with reason 'max_consecutive_assistant_turns'."
             ),
             default=None,
             ge=1,
@@ -1309,6 +1328,7 @@ class TerminationReason(str, Enum):
     AGENT_STOP = "agent_stop"
     MAX_STEPS = "max_steps"
     MAX_USER_TURNS = "max_user_turns"
+    MAX_CONSECUTIVE_ASSISTANT_TURNS = "max_consecutive_assistant_turns"
     TIMEOUT = "timeout"
     TOO_MANY_ERRORS = "too_many_errors"
     AGENT_ERROR = "agent_error"

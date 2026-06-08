@@ -439,6 +439,7 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
         task: Task,
         max_steps: int = 100,
         max_user_turns: Optional[int] = None,
+        max_consecutive_assistant_turns: Optional[int] = None,
         max_errors: int = 10,
         seed: Optional[int] = None,
         solo_mode: bool = False,
@@ -496,6 +497,8 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
         self.validate_communication = validate_communication
         self.max_user_turns = max_user_turns
         self.user_turn_count = 0
+        self.max_consecutive_assistant_turns = max_consecutive_assistant_turns
+        self.consecutive_assistant_turns = 0
 
         # Turn-based routing state
         self.from_role: Optional[Role] = None
@@ -820,6 +823,12 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
         ):
             self.done = True
             self.termination_reason = TerminationReason.MAX_USER_TURNS
+        if (
+            self.max_consecutive_assistant_turns is not None
+            and self.consecutive_assistant_turns >= self.max_consecutive_assistant_turns
+        ):
+            self.done = True
+            self.termination_reason = TerminationReason.MAX_CONSECUTIVE_ASSISTANT_TURNS
         if self.num_errors >= self.max_errors:
             self.done = True
             self.termination_reason = TerminationReason.TOO_MANY_ERRORS
@@ -939,6 +948,7 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
 
             self.trajectory.append(user_msg)
             self.user_turn_count += 1
+            self.consecutive_assistant_turns = 0
             self.message = user_msg
             self.from_role = Role.USER
             if user_msg.is_tool_call():
@@ -957,6 +967,7 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
                 self.done = True
                 self.termination_reason = TerminationReason.AGENT_STOP
 
+            self.consecutive_assistant_turns += 1
             self.trajectory.append(agent_msg)
             self.message = agent_msg
             self.from_role = Role.AGENT

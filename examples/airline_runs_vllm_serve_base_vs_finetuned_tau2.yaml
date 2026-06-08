@@ -1,0 +1,168 @@
+run_concurrency: 1
+
+# Compare Qwen3.6-27B base vs finetuned LoRA via vLLM OpenAI-compatible /v1/completions.
+# Server must be running at openai_base_url below.
+#
+# Run both variants:
+#   PYTHONPATH=src python -m tau2.config_cli \
+#     --config examples/airline_runs_vllm_serve_base_vs_finetuned.yaml
+#
+# Single variant:
+#   PYTHONPATH=src python -m tau2.config_cli \
+#     --config examples/airline_runs_vllm_serve_base_vs_finetuned.yaml \
+#     --run-ids finetuned
+#
+# Override a key at runtime (e.g. point to a different vLLM server):
+#   PYTHONPATH=src python -m tau2.config_cli \
+#     --config examples/airline_runs_vllm_serve_base_vs_finetuned.yaml \
+#     --run-ids base \
+#     --set agent_llm_args.openai_base_url=http://NEW_IP:8000
+
+domain: airline
+tags: ["tau3"]
+num_trials: 5
+# task_ids: ["0"]
+max_concurrency: 180
+seed: -1
+continue_on_length: false
+max_length_continuations: 1
+max_user_turns: 10
+max_consecutive_assistant_turns: 10
+fresh: true
+
+agent: openai_completions_agent
+agent_llm: Qwen/Qwen3-8B
+agent_llm_args:
+  openai_base_url: "http://34.153.155.242:8000"
+  openai_api_key: "EMPTY"
+  completion_format: qwen
+  jinja_template_path: "/Users/shiladityabanerjee/Projects/Simia-Agent-Training/tau2-bench/examples/qwen3_8b.jinja"   # path relative to where you run the command
+  temperature: 0
+  top_p: 0.95
+  top_k: 20
+  max_tokens: 4096
+  skip_special_tokens: false
+  # enable_thinking: false
+  openai_connect_timeout_seconds: 120
+  openai_read_timeout_seconds: 600
+  openai_request_max_retries: 2
+  openai_request_retry_backoff_seconds: 5.0
+  # chat_template_kwargs:
+    # enable_thinking: false
+    # add_generation_prompt: true
+
+user: vertex_user_simulator
+user_llm: gemini-3.1-pro-preview
+user_llm_args:
+  temperature: 0.3
+
+runs:
+  base_qwen3_8b:
+    agent_llm: Qwen/Qwen3-8B
+    save_to: airline_tau3_vllm_serve_qwen3_8b_base_tasks
+    agent_llm_args:
+      openai_base_url: "http://34.100.208.53:8000"
+      completion_format: qwen
+      jinja_template_path: "/Users/shiladityabanerjee/Projects/Simia-Agent-Training/tau2-bench/examples/qwen3_8b.jinja"
+      openai_model: "/home/shiladitya/.cache/huggingface/hub/models--Qwen--Qwen3-8B/snapshots/b968826d9c46dd6066d109eabc6255188de91218"
+      chat_template_kwargs:
+        enable_thinking: false
+        add_generation_prompt: true
+
+  base_simia_tau_sft_qwen3_8b:
+    agent_llm: Simia-Agent/Simia-Tau-SFT-Qwen3-8B
+    save_to: airline_tau3_vllm_serve_simia_tau_sft_qwen3_8b_base_tasks
+    agent_llm_args:
+      openai_base_url: "http://34.153.155.242:8000"
+      completion_format: qwen
+      jinja_template_path: "/Users/shiladityabanerjee/Projects/Simia-Agent-Training/tau2-bench/examples/qwen3_8b.jinja"
+      openai_model: "/home/shiladitya/.cache/huggingface/hub/models--Simia-Agent--Simia-Tau-SFT-Qwen3-8B/snapshots/fa7b3424ebafcfe7dcfd23f2aebff9f5134e1cc0"
+      chat_template_kwargs:
+        add_generation_prompt: true
+
+  base_qwen36_27b:
+    agent_llm: Qwen/Qwen3.6-27B
+    save_to: airline_tau3_vllm_serve_qwen36_27b_base_tasks
+    agent_llm_args:
+      openai_base_url: "http://35.242.176.167:8000"
+      jinja_template_path: "/Users/shiladityabanerjee/Projects/Simia-Agent-Training/tau2-bench/examples/qwen36_27b.jinja"   # path relative to where you run the command
+      openai_model: "/home/shiladitya/.cache/huggingface/hub/models--Qwen--Qwen3.6-27B/snapshots/6a9e13bd6fc8f0983b9b99948120bc37f49c13e9"
+      chat_template_kwargs:
+        add_generation_prompt: true
+
+  base_gemini_31_flash_lite:
+    agent: vertex_agent
+    agent_llm: gemini-3.1-flash-lite
+    save_to: airline_tau3_vllm_serve_gemini31_flash_lite_base_tasks
+    agent_llm_args:
+      temperature: 0
+      reasoning_level: none
+
+  base_gemini_31_pro_preview:
+    agent: vertex_agent
+    agent_llm: gemini-3.1-pro-preview
+    save_to: airline_tau3_vllm_serve_gemini31_pro_previewbase_tasks
+    agent_llm_args:
+      temperature: 0
+      reasoning_level: none
+
+  full_sft_lr2e5_1_1_8_1k_embedding:
+      agent_llm: Qwen/Qwen3-8B
+      save_to: airline_tau3_vllm_serve_full_sft_lr2e5_118_1k_embedding_tasks
+      agent_llm_args:
+        openai_base_url: "http://34.47.153.107:8000"
+        completion_format: qwen
+        openai_model: "/home/shiladitya/qwen_training_runs/full_sft_lr2e5_1_1_8_1k_embedding/final_model"
+        chat_template_kwargs:
+          add_generation_prompt: true
+
+  full_sft_lr2e5_1_1_8_2-5k_embedding:
+      agent_llm: Qwen/Qwen3-8B
+      save_to: airline_tau3_vllm_serve_full_sft_lr2e5_118_2-5k_embedding_tasks
+      agent_llm_args:
+        openai_base_url: "http://34.180.61.150:8000"
+        completion_format: qwen
+        openai_model: "/home/shiladitya/qwen_training_runs/full_sft_lr2e5_1_1_8_2-5k_embedding/final_model"
+        chat_template_kwargs:
+          add_generation_prompt: true
+
+  lora_32_64_lr2e4_1_1_8_2-5k:
+      agent_llm: Qwen/Qwen3-8B
+      save_to: airline_tau3_vllm_serve_lora_32_64_lr2e4_1_1_8_2k_tasks
+      agent_llm_args:
+        openai_base_url: "http://34.180.32.99:8000"
+        completion_format: qwen
+        openai_model: "lora_32_64_lr2e4_1_1_8_2-5k"
+        chat_template_kwargs:
+          add_generation_prompt: true
+
+  lora_32_64_lr2e4_4_1_8_1k:
+      agent_llm: Qwen/Qwen3-8B
+      save_to: airline_tau3_vllm_serve_lora_32_64_lr2e4_4_1_8_1k_tasks
+      agent_llm_args:
+        openai_base_url: "http://34.47.147.235:8000"
+        completion_format: qwen
+        openai_model: "lora_32_64_lr2e4_4_1_8_1k"
+        chat_template_kwargs:
+          add_generation_prompt: true
+
+  lora_32_64_lr2e4_1_1_8_1k:
+      agent_llm: Qwen/Qwen3-8B
+      save_to: airline_tau3_vllm_serve_lora_lr2e4_1_1_8_1k_tasks
+      agent_llm_args:
+        openai_base_url: "http://34.14.208.74:8000"
+        completion_format: qwen
+        openai_model: "lora_32_64_lr2e4_1_1_8_1k"
+        chat_template_kwargs:
+          add_generation_prompt: true
+
+  lora_32_64_lr2e4_1_1_8_5k:
+    agent_llm: Qwen/Qwen3-8B
+    save_to: airline_tau3_vllm_serve_lora_32_64_lr2e4_1_1_8_5k_tasks
+    agent_llm_args:
+      openai_base_url: "http://34.47.187.22:8000"
+      completion_format: qwen
+      openai_model: "lora_32_64_lr2e4_1_1_8_5k"
+      chat_template_kwargs:
+          add_generation_prompt: true
+

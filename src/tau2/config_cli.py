@@ -266,6 +266,7 @@ def _build_run_config(cfg: dict[str, Any]) -> TextRunConfig | VoiceRunConfig:
         airline_policy_path=cfg.get("airline_policy_path"),
         telecom_policy_path=cfg.get("telecom_policy_path"),
         run_name=cfg.get("run_name"),
+        tags=cfg.get("tags") or [],
     )
 
     mode = cfg.get("mode")
@@ -303,6 +304,7 @@ def _build_run_config(cfg: dict[str, Any]) -> TextRunConfig | VoiceRunConfig:
         user=cfg.get("user", "user_simulator"),
         max_steps=cfg.get("max_steps", DEFAULT_MAX_STEPS),
         max_user_turns=cfg.get("max_user_turns"),
+        max_consecutive_assistant_turns=cfg.get("max_consecutive_assistant_turns"),
         enforce_communication_protocol=bool(
             cfg.get("enforce_communication_protocol", False)
         ),
@@ -399,19 +401,21 @@ def _prepare_merged_cfg_for_run(
     # the fresh timestamp appended (i.e. foo_05_12_14_30_45).
     if cli_overrides:
         merged_cfg = _merge_dicts(merged_cfg, cli_overrides)
+    # Timestamp save_to first so run_name can include the full timestamped name.
+    _apply_fresh_save_to(merged_cfg)
     # Auto-generate run_name from run_id + config fields if not explicitly set.
     if not merged_cfg.get("run_name"):
         agent_llm = merged_cfg.get("agent_llm") or merged_cfg.get("llm_agent") or ""
         user_llm = merged_cfg.get("user_llm") or merged_cfg.get("llm_user") or ""
-        domain = str(merged_cfg.get("domain") or "").title()
-        _llm_args = merged_cfg.get("agent_llm_args") or {}
-        _ctk = _llm_args.get("chat_template_kwargs") or {}
-        _thinking = _llm_args.get("enable_thinking", _ctk.get("enable_thinking", True))
-        think_tag = "[Think]" if _thinking else ""
+        domain = str(merged_cfg.get("domain") or "")
+        tags = merged_cfg.get("tags") or []
+        tags_str = "".join(f"[{t}]" for t in tags)
+        short_agent = [x for x in agent_llm.split("/") if x][-1] if agent_llm else "agent"
+        short_user = [x for x in user_llm.split("/") if x][-1] if user_llm else "user"
+        save_to = merged_cfg.get("save_to") or run_id
         merged_cfg["run_name"] = (
-            f"[{run_id}][R1][{agent_llm.upper()}][{user_llm.upper()}][Conversation][{domain}]{think_tag}"
+            f"{tags_str}[{domain}][{run_id}][{short_agent}][{short_user}][{save_to}]"
         )
-    _apply_fresh_save_to(merged_cfg)
     return merged_cfg
 
 

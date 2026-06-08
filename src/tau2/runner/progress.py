@@ -8,6 +8,10 @@ import traceback
 import uuid
 from typing import Callable, Optional
 
+
+class NonRetryableError(Exception):
+    """Raised for errors where retrying cannot help (e.g. context length exceeded)."""
+
 from loguru import logger
 
 from tau2.data_model.simulation import Results, SimulationRun, TerminationReason
@@ -89,6 +93,12 @@ def run_with_retry(
 
             return simulation
 
+        except NonRetryableError as e:
+            last_exception = e
+            last_error_reason = str(e)
+            last_traceback = traceback.format_exc()
+            logger.error(f"Task {task.id} failed (non-retryable): {e}")
+            break
         except Exception as e:
             last_exception = e
             last_error_reason = str(e)

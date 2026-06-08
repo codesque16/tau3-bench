@@ -15,9 +15,9 @@ run_concurrency: 1
 #     --run-ids finetuned
 #
 domain: airline
-task_ids: ["0"]
-num_trials: 10
-trial_concurrency: 10
+# task_ids: ["0"]
+num_trials: 5
+trial_concurrency: 5
 max_concurrency: 180
 verbose_logs: true
 seed: -1
@@ -27,25 +27,25 @@ max_user_turns: 10
 fresh: true
 
 agent: openai_completions_agent
-agent_llm: Qwen/Qwen3.6-27B
+agent_llm: Qwen/Qwen3-8B
 agent_llm_args:
-  openai_base_url: "http://34.47.187.56:8000"
+  openai_base_url: "http://35.242.176.167:8000"
   # openai_base_url: "http://35.246.101.162:8000"
   openai_api_key: "EMPTY"
   completion_format: qwen
   jinja_template_path: "../scripts/gcloud_scripts/qwen36_27b.jinja"
-  temperature: 0.6
+  temperature: 0
   top_p: 0.95
   top_k: 20
   max_tokens: 4096
   skip_special_tokens: false
-  enable_thinking: true
+  enable_thinking: false
   openai_connect_timeout_seconds: 120
   openai_read_timeout_seconds: 600
   openai_request_max_retries: 2
   openai_request_retry_backoff_seconds: 5.0
   chat_template_kwargs:
-    enable_thinking: true
+    enable_thinking: false
     add_generation_prompt: true
 
 user: vertex_user_simulator
@@ -55,12 +55,134 @@ user_llm_args:
 
 runs:
   base:
+    save_to: airline_vllm_serve_qwen3_8b_base_tasks
+    airline_policy_path: data/tau2/domains/airline/policy.md
+    agent_llm: Qwen/Qwen3-8B
+    agent_llm_args:
+      # jinja_template_path: "../scripts/gcloud_scripts/qwen36_27b.jinja"
+      jinja_template_path: "../scripts/gcloud_scripts/qwen3_8b.jinja"
+      # openai_model: "/home/shiladitya/.cache/huggingface/hub/models--Qwen--Qwen3.6-27B/snapshots/6a9e13bd6fc8f0983b9b99948120bc37f49c13e9"
+      openai_model: "/home/shiladitya/.cache/huggingface/hub/models--Qwen--Qwen3-8B/snapshots/b968826d9c46dd6066d109eabc6255188de91218"
+      # openai_model: "checkpoint_1680"
+
+  base_qwen36_27b:
     save_to: airline_vllm_serve_qwen36_27b_base_tasks
     airline_policy_path: data/tau2/domains/airline/policy.md
+    agent_llm: Qwen/Qwen3.6-27B
     agent_llm_args:
       jinja_template_path: "../scripts/gcloud_scripts/qwen36_27b.jinja"
-      openai_model: "/home/shiladitya/.cache/huggingface/hub/models--Qwen--Qwen3.6-27B/snapshots/6a9e13bd6fc8f0983b9b99948120bc37f49c13e9"
-      
+      openai_model: "/home/shiladitya/.cache/huggingface/hub/models--Qwen--Qwen3.6-27b/snapshots/6a9e13bd6fc8f0983b9b99948120bc37f49c13e9"
+      openai_base_url: "http://34.180.2.172:8000"
+
+  25k:
+    save_to: airline_vllm_serve_qwen3_8b_base_tasks_25k
+    airline_policy_path: data/tau2/domains/airline/policy.md
+    agent_llm: Qwen/Qwen3-8B
+    agent_llm_args:
+      jinja_template_path: "../scripts/gcloud_scripts/qwen3_8b.jinja"
+      openai_model: "25k"
+
+  1k:
+    save_to: airline_vllm_serve_qwen3_8b_base_tasks_1k
+    airline_policy_path: data/tau2/domains/airline/policy.md
+    agent_llm: Qwen/Qwen3-8B
+    agent_llm_args:
+      jinja_template_path: "../scripts/gcloud_scripts/qwen3_8b.jinja"
+      openai_model: "1k"
+
+  1k_full:
+    save_to: airline_vllm_serve_qwen3_8b_base_tasks_1k_full
+    airline_policy_path: data/tau2/domains/airline/policy.md
+    agent_llm: Qwen/Qwen3-8B
+    agent_llm_args:
+      jinja_template_path: "../scripts/gcloud_scripts/qwen3_8b.jinja"
+      openai_model: "/home/shiladitya/training_checkpoints/checkpoint-450"
+      openai_base_url: "http://34.100.208.53:8000"
+
+  2_5k:
+    save_to: airline_vllm_serve_qwen3_8b_base_tasks_2_5k
+    airline_policy_path: data/tau2/domains/airline/policy.md
+    agent_llm: Qwen/Qwen3-8B
+    agent_llm_args:
+      jinja_template_path: "../scripts/gcloud_scripts/qwen3_8b.jinja"
+      openai_model: "2_5k"
+
+  2_5k_full:
+    save_to: airline_vllm_serve_qwen3_8b_base_tasks_2_5k_full
+    airline_policy_path: data/tau2/domains/airline/policy.md
+    agent_llm: Qwen/Qwen3-8B
+    agent_llm_args:
+      jinja_template_path: "../scripts/gcloud_scripts/qwen3_8b.jinja"
+      openai_model: "/home/shiladitya/training_checkpoints/checkpoint-930"
+      openai_base_url: "http://34.100.208.53:8000"
+
+  5k:
+    save_to: airline_vllm_serve_qwen3_8b_base_tasks_5k
+    airline_policy_path: data/tau2/domains/airline/policy.md
+    agent_llm: Qwen/Qwen3-8B
+    agent_llm_args:
+      jinja_template_path: "../scripts/gcloud_scripts/qwen3_8b.jinja"
+      openai_model: "5k"
+
+  5k_full:
+    save_to: airline_vllm_serve_qwen3_8b_base_tasks_5k_full
+    airline_policy_path: data/tau2/domains/airline/policy.md
+    agent_llm: Qwen/Qwen3-8B
+    agent_llm_args:
+      jinja_template_path: "../scripts/gcloud_scripts/qwen3_8b.jinja"
+      openai_model: "/home/shiladitya/training_checkpoints/checkpoint-1848"
+      openai_base_url: "http://34.100.208.53:8000"
+
+  10k:
+    save_to: airline_vllm_serve_qwen3_8b_base_tasks_10k
+    airline_policy_path: data/tau2/domains/airline/policy.md
+    agent_llm: Qwen/Qwen3-8B
+    agent_llm_args:
+      jinja_template_path: "../scripts/gcloud_scripts/qwen3_8b.jinja"
+      openai_model: "10k"
+
+  10k_full:
+    save_to: airline_vllm_serve_qwen3_8b_base_tasks_10k_full
+    airline_policy_path: data/tau2/domains/airline/policy.md
+    agent_llm: Qwen/Qwen3-8B
+    agent_llm_args:
+      jinja_template_path: "../scripts/gcloud_scripts/qwen3_8b.jinja"
+      openai_model: "/home/shiladitya/training_checkpoints/checkpoint-3666"
+      openai_base_url: "http://34.100.208.53:8000"
+
+  28k_full:
+    save_to: airline_vllm_serve_qwen3_8b_base_tasks_28k_full
+    airline_policy_path: data/tau2/domains/airline/policy.md
+    agent_llm: Qwen/Qwen3-8B
+    agent_llm_args:
+      jinja_template_path: "../scripts/gcloud_scripts/qwen3_8b.jinja"
+      openai_model: "/home/shiladitya/outputs_simia_tau3/checkpoint-5481"
+      openai_base_url: "http://34.143.246.22:8000"
+
+  base_full:
+    save_to: airline_vllm_serve_qwen36_27b_base_tasks
+    airline_policy_path: data/tau2/domains/airline/policy.md
+    agent_llm: Qwen/Qwen3-8B
+    agent_llm_args:
+      openai_base_url: "http://34.153.155.242:8000"
+      # jinja_template_path: "../scripts/gcloud_scripts/qwen36_27b.jinja"
+      jinja_template_path: "../scripts/gcloud_scripts/qwen3_8b.jinja"
+      # openai_model: "/home/shiladitya/.cache/huggingface/hub/models--Qwen--Qwen3.6-27B/snapshots/6a9e13bd6fc8f0983b9b99948120bc37f49c13e9"
+      # openai_model: "/home/shiladitya/.cache/huggingface/hub/models--Qwen--Qwen3-8B/snapshots/b968826d9c46dd6066d109eabc6255188de91218"
+      openai_model: "/home/shiladitya/checkpoints/checkpoint-360"
+
+  simia:
+    save_to: airline_vllm_serve_qwen3_8b_simia_tasks
+    airline_policy_path: data/tau2/domains/airline/policy.md
+    agent_llm: Simia-Agent/Simia-Tau-SFT-Qwen3-8B
+    agent_llm_args:
+      openai_base_url: "http://34.153.155.242:8000"
+      # jinja_template_path: "../scripts/gcloud_scripts/qwen36_27b.jinja"
+      jinja_template_path: "../scripts/gcloud_scripts/qwen3_8b.jinja"
+      # openai_model: "/home/shiladitya/.cache/huggingface/hub/models--Qwen--Qwen3.6-27B/snapshots/6a9e13bd6fc8f0983b9b99948120bc37f49c13e9"
+      openai_model: "/home/shiladitya/.cache/huggingface/hub/models--Simia-Agent--Simia-Tau-SFT-Qwen3-8B/snapshots/fa7b3424ebafcfe7dcfd23f2aebff9f5134e1cc0"
+  
+  
   finetuned:
     save_to: airline_vllm_serve_qwen35_2b_finetuned_tasks
     airline_policy_path: data/tau2/domains/airline/policy.md

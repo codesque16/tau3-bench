@@ -10,7 +10,7 @@ from tau2.data_model.tasks import Task
 
 class RunTracer:
     @contextmanager
-    def run_span(self, *, run_id: str):
+    def run_span(self, *, run_id: str, tags: Optional[list[str]] = None):
         yield None
 
     @contextmanager
@@ -115,8 +115,9 @@ class LogfireRunTracer(RunTracer):
         self._logfire.info(name, **clean)
 
     @contextmanager
-    def run_span(self, *, run_id: str):
-        with self._span(run_id, run_id=run_id) as span:
+    def run_span(self, *, run_id: str, tags: Optional[list[str]] = None):
+        extra = {"_tags": tags} if tags else {}
+        with self._span(run_id, run_id=run_id, **extra) as span:
             yield span
 
     @contextmanager

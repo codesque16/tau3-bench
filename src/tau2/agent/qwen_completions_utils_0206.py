@@ -8,9 +8,7 @@ Handles:
   - Prompt rendering (no Gemma token escaping)
   - ``reasoning`` → ``reasoning_content`` for multi-turn history
   - Parsing ``<think>…</think>`` from completions output
-  - Parsing Qwen tool calls in BOTH dialects:
-      * Hermes JSON  : ``<tool_call>{"name": …, "arguments": {…}}</tool_call>``
-      * Qwen XML     : ``<tool_call><function=…><parameter=…>…</function></tool_call>``
+  - Parsing Qwen XML tool calls (``<tool_call><function=…>``)
   - Default stop token ``<|im_end|>``
   - Length-truncation continuation wrappers
 """
@@ -32,18 +30,8 @@ _QWEN_THINKING_RE = re.compile(
     r"<think>\s*(.*?)\s*</think>",
     re.DOTALL,
 )
-
-# Capture whatever sits between the ``<tool_call>`` tags; the dialect (Hermes JSON
-# vs Qwen XML) is decided per-call in ``_replace_tool``. Using a generic inter-tag
-# body (rather than a ``\{.*?\}`` matcher) avoids mis-bounding on nested argument
-# objects like ``{"arguments": {"user_id": "..."}}``.
 _QWEN_TOOL_CALL_RE = re.compile(
-    r"<tool_call>\s*(.*?)\s*</tool_call>",
-    re.DOTALL,
-)
-# Qwen XML dialect inside a tool_call body.
-_QWEN_XML_FUNCTION_RE = re.compile(
-    r"<function=([^>\n]+)>\s*(.*?)\s*</function>",
+    r"<tool_call>\s*<function=([^>\n]+)>\s*(.*?)\s*</function>\s*</tool_call>",
     re.DOTALL,
 )
 _QWEN_PARAMETER_RE = re.compile(
@@ -193,40 +181,6 @@ def _qwen_parameters_to_dict(params_body: str) -> dict[str, Any]:
     return args
 
 
-def _parse_tool_call_body(body: str) -> tuple[str | None, dict[str, Any]]:
-    """
-    Parse a single ``<tool_call>`` body into ``(name, arguments)``.
-
-    Supports both dialects:
-      - Hermes JSON : ``{"name": "...", "arguments": {...}}``
-      - Qwen XML    : ``<function=...><parameter=...>...</parameter></function>``
-
-    Returns ``(None, {})`` when the body matches neither dialect.
-    """
-    body = body.strip()
-
-    # Hermes / JSON dialect — try this first since it's the common SFT output.
-    try:
-        obj = json.loads(body)
-    except json.JSONDecodeError:
-        obj = None
-    if isinstance(obj, dict):
-        name = obj.get("name")
-        args = _coerce_arguments_dict(obj.get("arguments"))
-        if isinstance(name, str) and name.strip():
-            return name.strip(), args
-
-    # Qwen XML dialect.
-    fm = _QWEN_XML_FUNCTION_RE.match(body)
-    if fm:
-        name = fm.group(1).strip()
-        args = _qwen_parameters_to_dict(fm.group(2))
-        if name:
-            return name, args
-
-    return None, {}
-
-
 def parse_qwen_completion(
     raw_output: str,
     injection_prefix: str | None = None,
@@ -235,8 +189,7 @@ def parse_qwen_completion(
     Parse raw model output into (reasoning, tool_calls, content).
 
     Same flow as ``parse_completion`` (Gemma): merge injection + output, then
-    regex-extract thinking and tool calls. Tool calls are parsed in both the
-    Hermes JSON and Qwen XML dialects (see ``_parse_tool_call_body``).
+    regex-extract thinking and tool calls.
 
     When ``injection_prefix`` is active the model's output is a *continuation*
     of that prefix — the opening ``<think>\\n`` tag is in the
@@ -263,10 +216,9 @@ def parse_qwen_completion(
     counter = [0]
 
     def _replace_tool(mc: re.Match) -> str:
-        name, args = _parse_tool_call_body(mc.group(1))
-        if not name:
-            # Unparseable in either dialect — leave it in content for visibility.
-            return mc.group(0)
+        name = mc.group(1).strip()
+        params_body = mc.group(2)
+        args = _qwen_parameters_to_dict(params_body)
         counter[0] += 1
         tool_calls.append(
             {

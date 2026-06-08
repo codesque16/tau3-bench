@@ -911,7 +911,7 @@ def run_tasks(
             monitor.task_finished(task_key)
             _cleanup_thread_event_loop()
 
-    with tracer.run_span(run_id=run_id) as run_span:
+    with tracer.run_span(run_id=run_id, tags=config.tags or None) as run_span:
         tracer.log_experiment_config(
             config=config,
             run_id=run_id,

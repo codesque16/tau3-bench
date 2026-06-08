@@ -12,7 +12,14 @@ from loguru import logger
 
 
 def _genai_retryable(exc: BaseException) -> bool:
-    """429 / transient overload — safe to retry with backoff."""
+    """429 / transient overload / OAuth transport timeout — safe to retry with backoff."""
+    try:
+        from google.auth.exceptions import TransportError
+
+        if isinstance(exc, TransportError):
+            return True
+    except Exception:
+        pass
     try:
         from google.genai import errors as genai_errors
 

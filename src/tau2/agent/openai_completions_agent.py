@@ -71,6 +71,7 @@ import requests
 from loguru import logger
 
 from tau2.agent.llm_agent import LLMAgent
+from tau2.runner.progress import NonRetryableError
 from tau2.data_model.message import AssistantMessage, ToolCall
 from tau2.environment.tool import Tool
 from tau2.agent.qwen_completions_utils import (
@@ -807,6 +808,10 @@ def _completions_generate_with_logfire(
             if r.status_code in {408, 409, 429, 500, 502, 503, 504}:
                 raise RuntimeError(
                     f"openai_completions_agent transient status {r.status_code}: {r.text[:500]}"
+                )
+            if r.status_code == 400 and "context length" in r.text.lower():
+                raise NonRetryableError(
+                    f"openai_completions_agent: context length exceeded: {r.text[:500]}"
                 )
             if r.status_code != 200:
                 raise RuntimeError(

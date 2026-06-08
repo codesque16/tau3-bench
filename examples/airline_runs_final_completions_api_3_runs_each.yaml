@@ -18,6 +18,7 @@ seed: -1
 continue_on_length: false
 max_length_continuations: 1
 max_user_turns: 10
+max_consecutive_assistant_turns: 10
 agent: openai_completions_agent
 fresh: true
 agent_llm: gemma4-e4b-it-openai
