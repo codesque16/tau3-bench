@@ -18,7 +18,7 @@ run_concurrency: 1
 #     --run-ids base \
 #     --set agent_llm_args.openai_base_url=http://NEW_IP:8000
 
-domain: airline
+domain: retail
 tags: ["tau3"]
 num_trials: 5
 # task_ids: ["0"]
@@ -59,7 +59,7 @@ user_llm_args:
 runs:
   base_qwen3_8b:
     agent_llm: Qwen/Qwen3-8B
-    save_to: airline_tau3_vllm_serve_qwen3_8b_base_tasks
+    save_to: retail_tau3_vllm_serve_qwen3_8b_base_tasks
     agent_llm_args:
       openai_base_url: "http://34.100.208.53:8000"
       completion_format: qwen
@@ -71,7 +71,7 @@ runs:
 
   base_simia_tau_sft_qwen3_8b:
     agent_llm: Simia-Agent/Simia-Tau-SFT-Qwen3-8B
-    save_to: airline_tau3_vllm_serve_simia_tau_sft_qwen3_8b_base_tasks
+    save_to: retail_tau3_vllm_serve_simia_tau_sft_qwen3_8b_base_tasks
     agent_llm_args:
       openai_base_url: "http://34.153.155.242:8000"
       completion_format: qwen
@@ -82,7 +82,7 @@ runs:
 
   base_qwen36_27b:
     agent_llm: Qwen/Qwen3.6-27B
-    save_to: airline_tau3_vllm_serve_qwen36_27b_base_tasks
+    save_to: retail_tau3_vllm_serve_qwen36_27b_base_tasks
     agent_llm_args:
       openai_base_url: "http://35.242.176.167:8000"
       jinja_template_path: "/Users/shiladityabanerjee/Projects/Simia-Agent-Training/tau2-bench/examples/qwen36_27b.jinja"   # path relative to where you run the command
@@ -93,7 +93,7 @@ runs:
   base_gemini_31_flash_lite:
     agent: vertex_agent
     agent_llm: gemini-3.1-flash-lite
-    save_to: airline_tau3_vllm_serve_gemini31_flash_lite_base_tasks
+    save_to: retail_tau3_vllm_serve_gemini31_flash_lite_base_tasks
     agent_llm_args:
       temperature: 0
       reasoning_level: none
@@ -101,14 +101,14 @@ runs:
   base_gemini_31_pro_preview:
     agent: vertex_agent
     agent_llm: gemini-3.1-pro-preview
-    save_to: airline_tau3_vllm_serve_gemini31_pro_previewbase_tasks
+    save_to: retail_tau3_vllm_serve_gemini31_pro_previewbase_tasks
     agent_llm_args:
       temperature: 0
       reasoning_level: none
 
   full_sft_lr2e5_1_1_8_1k_embedding:
       agent_llm: Qwen/Qwen3-8B
-      save_to: airline_tau3_vllm_serve_full_sft_lr2e5_118_1k_embedding_tasks
+      save_to: retail_tau3_vllm_serve_full_sft_lr2e5_118_1k_embedding_tasks
       agent_llm_args:
         openai_base_url: "http://34.47.153.107:8000"
         completion_format: qwen
@@ -118,7 +118,7 @@ runs:
 
   full_sft_lr2e5_1_1_8_2-5k_embedding:
       agent_llm: Qwen/Qwen3-8B
-      save_to: airline_tau3_vllm_serve_full_sft_lr2e5_118_2-5k_embedding_tasks
+      save_to: retail_tau3_vllm_serve_full_sft_lr2e5_118_2-5k_embedding_tasks
       agent_llm_args:
         openai_base_url: "http://34.180.61.150:8000"
         completion_format: qwen
@@ -128,7 +128,7 @@ runs:
 
   full_sft_lr2e5_1_1_8_5k_embedding:
       agent_llm: Qwen/Qwen3-8B
-      save_to: airline_tau3_vllm_serve_full_sft_lr2e5_118_5k_embedding_tasks
+      save_to: retail_tau3_vllm_serve_full_sft_lr2e5_118_5k_embedding_tasks
       agent_llm_args:
         openai_base_url: "http://34.47.153.107:8000"
         completion_format: qwen
@@ -138,7 +138,7 @@ runs:
 
   full_sft_lr2e5_1_1_8_10k_embedding:
       agent_llm: Qwen/Qwen3-8B
-      save_to: airline_tau3_vllm_serve_full_sft_lr2e5_118_10k_embedding_tasks
+      save_to: retail_tau3_vllm_serve_full_sft_lr2e5_118_10k_embedding_tasks
       agent_llm_args:
         openai_base_url: "http://34.180.32.99:8000"
         completion_format: qwen
@@ -148,7 +148,7 @@ runs:
 
   full_sft_lr2e5_1_1_8_28k_embedding:
       agent_llm: Qwen/Qwen3-8B
-      save_to: airline_tau3_vllm_serve_full_sft_lr2e5_118_28k_embedding_tasks
+      save_to: retail_tau3_vllm_serve_full_sft_lr2e5_118_28k_embedding_tasks
       agent_llm_args:
         openai_base_url: "http://34.14.208.74:8000"
         completion_format: qwen
@@ -158,7 +158,7 @@ runs:
 
   lora_32_64_lr2e4_1_1_8_2-5k:
       agent_llm: Qwen/Qwen3-8B
-      save_to: airline_tau3_vllm_serve_lora_32_64_lr2e4_1_1_8_2k_tasks
+      save_to: retail_tau3_vllm_serve_lora_32_64_lr2e4_1_1_8_2k_tasks
       agent_llm_args:
         openai_base_url: "http://34.180.32.99:8000"
         completion_format: qwen
@@ -168,7 +168,7 @@ runs:
 
   lora_32_64_lr2e4_4_1_8_1k:
       agent_llm: Qwen/Qwen3-8B
-      save_to: airline_tau3_vllm_serve_lora_32_64_lr2e4_4_1_8_1k_tasks
+      save_to: retail_tau3_vllm_serve_lora_32_64_lr2e4_4_1_8_1k_tasks
       agent_llm_args:
         openai_base_url: "http://34.47.147.235:8000"
         completion_format: qwen
@@ -178,7 +178,7 @@ runs:
 
   lora_32_64_lr2e4_1_1_8_1k:
       agent_llm: Qwen/Qwen3-8B
-      save_to: airline_tau3_vllm_serve_lora_lr2e4_1_1_8_1k_tasks
+      save_to: retail_tau3_vllm_serve_lora_lr2e4_1_1_8_1k_tasks
       agent_llm_args:
         openai_base_url: "http://34.14.208.74:8000"
         completion_format: qwen
@@ -188,7 +188,7 @@ runs:
 
   lora_32_64_lr2e4_1_1_8_5k:
     agent_llm: Qwen/Qwen3-8B
-    save_to: airline_tau3_vllm_serve_lora_32_64_lr2e4_1_1_8_5k_tasks
+    save_to: retail_tau3_vllm_serve_lora_32_64_lr2e4_1_1_8_5k_tasks
     agent_llm_args:
       openai_base_url: "http://34.47.187.22:8000"
       completion_format: qwen
@@ -198,7 +198,7 @@ runs:
 
   lora_32_64_lr2e4_1_1_8_10k:
     agent_llm: Qwen/Qwen3-8B
-    save_to: airline_tau3_vllm_serve_lora_32_64_lr2e4_1_1_8_10k_tasks
+    save_to: retail_tau3_vllm_serve_lora_32_64_lr2e4_1_1_8_10k_tasks
     agent_llm_args:
       openai_base_url: "http://34.180.32.99:8000"
       completion_format: qwen
@@ -208,7 +208,7 @@ runs:
 
   lora_32_64_lr2e4_1_1_8_28k:
     agent_llm: Qwen/Qwen3-8B
-    save_to: airline_tau3_vllm_serve_lora_32_64_lr2e4_1_1_8_28k_tasks
+    save_to: retail_tau3_vllm_serve_lora_32_64_lr2e4_1_1_8_28k_tasks
     agent_llm_args:
       openai_base_url: "http://34.47.147.235:8000"
       completion_format: qwen
