@@ -106,6 +106,14 @@ runs:
       temperature: 0
       reasoning_level: none
 
+  base_gemini_31_pro:
+    agent: vertex_agent
+    agent_llm: gemini-3.1-pro
+    save_to: airline_tau3_vllm_serve_gemini31_pro_previewbase_tasks
+    agent_llm_args:
+      temperature: 0
+      reasoning_level: none
+
   full_sft_lr2e5_1_1_8_1k_embedding:
       agent_llm: Qwen/Qwen3-8B
       save_to: airline_tau3_vllm_serve_full_sft_lr2e5_118_1k_embedding_tasks
@@ -113,6 +121,26 @@ runs:
         openai_base_url: "http://34.47.153.107:8000"
         completion_format: qwen
         openai_model: "/home/shiladitya/qwen_training_runs/full_sft_lr2e5_1_1_8_1k_embedding/final_model"
+        chat_template_kwargs:
+          add_generation_prompt: true
+
+  full_sft_lr5e5_1_1_8_1k_embedding:
+      agent_llm: Qwen/Qwen3-8B
+      save_to: airline_tau3_vllm_serve_full_sft_lr5e5_118_1k_embedding_tasks
+      agent_llm_args:
+        openai_base_url: "http://34.14.208.74:8000"
+        completion_format: qwen
+        openai_model: "full_sft_lr5e5_1_1_8_1k_embedding"
+        chat_template_kwargs:
+          add_generation_prompt: true
+
+  full_sft_lr5e5_1_1_8_1k_embedding_truncatedsp:
+      agent_llm: Qwen/Qwen3-8B
+      save_to: airline_tau3_vllm_serve_full_sft_lr5e5_118_1k_embedding_truncated_sp_tasks
+      agent_llm_args:
+        openai_base_url: "http://34.14.208.74:8000"
+        completion_format: qwen
+        openai_model: "full_sft_lr5e5_1_1_8_1k_embedding_truncatedsp"
         chat_template_kwargs:
           add_generation_prompt: true
 
@@ -130,9 +158,29 @@ runs:
       agent_llm: Qwen/Qwen3-8B
       save_to: airline_tau3_vllm_serve_full_sft_lr2e5_118_5k_embedding_tasks
       agent_llm_args:
-        openai_base_url: "http://34.47.153.107:8000"
+        openai_base_url: "http://34.14.208.74:8000"
         completion_format: qwen
         openai_model: "full_sft_lr2e5_1_1_8_5k_embedding"
+        chat_template_kwargs:
+          add_generation_prompt: true
+
+  full_sft_lr5e5_1_1_8_5k_embedding:
+      agent_llm: Qwen/Qwen3-8B
+      save_to: airline_tau3_vllm_serve_full_sft_lr5e5_118_5k_embedding_tasks
+      agent_llm_args:
+        openai_base_url: "http://34.14.208.74:8000"
+        completion_format: qwen
+        openai_model: "full_sft_lr5e5_1_1_8_5k_embedding"
+        chat_template_kwargs:
+          add_generation_prompt: true
+
+  full_sft_lr5e5_1_1_8_5k_embedding_truncatedsp:
+      agent_llm: Qwen/Qwen3-8B
+      save_to: airline_tau3_vllm_serve_full_sft_lr5e5_118_5k_embedding_truncatedsp_tasks
+      agent_llm_args:
+        openai_base_url: "http://34.47.147.235:8000"
+        completion_format: qwen
+        openai_model: "full_sft_lr5e5_1_1_8_5k_embedding_truncatedsp"
         chat_template_kwargs:
           add_generation_prompt: true
 

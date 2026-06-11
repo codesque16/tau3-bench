@@ -57,6 +57,7 @@ def run_with_retry(
     last_exception = None
     last_error_reason = ""
     last_traceback = ""
+    non_retryable = False
 
     for attempt in range(max_attempts):
         if shutdown_event is not None and shutdown_event.is_set():
@@ -97,6 +98,7 @@ def run_with_retry(
             last_exception = e
             last_error_reason = str(e)
             last_traceback = traceback.format_exc()
+            non_retryable = True
             logger.error(f"Task {task.id} failed (non-retryable): {e}")
             break
         except Exception as e:
@@ -127,7 +129,11 @@ def run_with_retry(
         start_time=now,
         end_time=now,
         duration=0.0,
-        termination_reason=TerminationReason.INFRASTRUCTURE_ERROR,
+        termination_reason=(
+            TerminationReason.CONTEXT_WINDOW_EXCEEDED
+            if non_retryable
+            else TerminationReason.INFRASTRUCTURE_ERROR
+        ),
         messages=[],
         trial=trial,
         seed=seed,

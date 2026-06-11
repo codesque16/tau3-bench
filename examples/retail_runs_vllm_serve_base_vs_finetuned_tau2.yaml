@@ -61,10 +61,10 @@ runs:
     agent_llm: Qwen/Qwen3-8B
     save_to: retail_tau3_vllm_serve_qwen3_8b_base_tasks
     agent_llm_args:
-      openai_base_url: "http://34.100.208.53:8000"
+      openai_base_url: "http://34.47.187.22:8000"
       completion_format: qwen
       jinja_template_path: "/Users/shiladityabanerjee/Projects/Simia-Agent-Training/tau2-bench/examples/qwen3_8b.jinja"
-      openai_model: "/home/shiladitya/.cache/huggingface/hub/models--Qwen--Qwen3-8B/snapshots/b968826d9c46dd6066d109eabc6255188de91218"
+      openai_model: "qwen3-8b"
       chat_template_kwargs:
         enable_thinking: false
         add_generation_prompt: true
@@ -73,11 +73,12 @@ runs:
     agent_llm: Simia-Agent/Simia-Tau-SFT-Qwen3-8B
     save_to: retail_tau3_vllm_serve_simia_tau_sft_qwen3_8b_base_tasks
     agent_llm_args:
-      openai_base_url: "http://34.153.155.242:8000"
+      openai_base_url: "http://34.180.32.99:8000"
       completion_format: qwen
       jinja_template_path: "/Users/shiladityabanerjee/Projects/Simia-Agent-Training/tau2-bench/examples/qwen3_8b.jinja"
-      openai_model: "/home/shiladitya/.cache/huggingface/hub/models--Simia-Agent--Simia-Tau-SFT-Qwen3-8B/snapshots/fa7b3424ebafcfe7dcfd23f2aebff9f5134e1cc0"
+      openai_model: "simia-tau-sft-qwen3-8b"
       chat_template_kwargs:
+        enable_thinking: false
         add_generation_prompt: true
 
   base_qwen36_27b:
@@ -101,10 +102,18 @@ runs:
   base_gemini_31_pro_preview:
     agent: vertex_agent
     agent_llm: gemini-3.1-pro-preview
-    save_to: retail_tau3_vllm_serve_gemini31_pro_previewbase_tasks
+    save_to: retail_tau3_vllm_serve_gemini31_pro_preview_base_tasks
     agent_llm_args:
       temperature: 0
       reasoning_level: none
+
+  base_gemini_31_pro_preview_high_reasoning:
+    agent: vertex_agent
+    agent_llm: gemini-3.1-pro-preview
+    save_to: retail_tau3_vllm_serve_gemini31_pro_preview_high_reasoning_base_tasks
+    agent_llm_args:
+      temperature: 0
+      reasoning_level: high
 
   full_sft_lr2e5_1_1_8_1k_embedding:
       agent_llm: Qwen/Qwen3-8B
@@ -113,6 +122,16 @@ runs:
         openai_base_url: "http://34.47.153.107:8000"
         completion_format: qwen
         openai_model: "/home/shiladitya/qwen_training_runs/full_sft_lr2e5_1_1_8_1k_embedding/final_model"
+        chat_template_kwargs:
+          add_generation_prompt: true
+
+  full_sft_lr5e5_1_1_8_1k_embedding:
+      agent_llm: Qwen/Qwen3-8B
+      save_to: retail_tau3_vllm_serve_full_sft_lr5e5_118_1k_embedding_tasks
+      agent_llm_args:
+        openai_base_url: "http://34.14.208.74:8000"
+        completion_format: qwen
+        openai_model: "full_sft_lr5e5_1_1_8_1k_embedding"
         chat_template_kwargs:
           add_generation_prompt: true
 
@@ -210,7 +229,7 @@ runs:
     agent_llm: Qwen/Qwen3-8B
     save_to: retail_tau3_vllm_serve_lora_32_64_lr2e4_1_1_8_28k_tasks
     agent_llm_args:
-      openai_base_url: "http://34.47.147.235:8000"
+      openai_base_url: "http://34.47.187.22:8000"
       completion_format: qwen
       openai_model: "lora_32_64_lr2e4_1_1_8_28k"
       chat_template_kwargs:
